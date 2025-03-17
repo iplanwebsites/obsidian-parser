@@ -111,7 +111,6 @@ declare function jsonStringify(o: any): string;
 declare function writeToFileSync(filePath: string, content: string): void;
 
 declare const metamark: {
-    processFolder: typeof processFolder;
     obsidian: {
         vault: {
             process: typeof processFolder;

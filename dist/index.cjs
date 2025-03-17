@@ -13092,9 +13092,6 @@ function buildDefaultAllowedFileSet(dirPath) {
 
 // src/index.ts
 var metamark = {
-  processFolder,
-  //obsidian-optimized method
-  // LEGACY export structure (metamark):
   obsidian: {
     vault: {
       process: processFolder
