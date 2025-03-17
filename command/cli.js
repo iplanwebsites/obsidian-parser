@@ -28,6 +28,12 @@ program
   .option("--media-prefix <prefix>", "Media path prefix", "/media")
   .option("--optimize-images", "Optimize images", true)
   .option("--skip-media", "Skip media processing", false)
+  .option("--skip-existing", "Skip processing existing media files", false)
+  .option(
+    "--media-results <path>",
+    "Save media processing results to a JSON file",
+    "media-results.json"
+  )
   .parse(process.argv);
 
 const options = program.opts();
@@ -41,10 +47,19 @@ const options = program.opts();
     const mediaOutputPath = path.resolve(process.cwd(), options.mediaOutput);
     const debugLevel = parseInt(options.debug);
 
+    // Determine media results path - put in same directory as main output
+    const mediaResultsPath = path.resolve(
+      path.dirname(outputPath),
+      options.mediaResults
+    );
+
     console.log(`🚀 Starting Obsidian vault conversion`);
     console.log(`📂 Input: ${inputPath}`);
     console.log(`📄 Output: ${outputPath}`);
     console.log(`🖼️ Media output: ${mediaOutputPath}`);
+    if (options.skipExisting) {
+      console.log(`⏭️ Skip existing files: Enabled`);
+    }
 
     // Process media files first if not skipped
     let mediaData = [];
@@ -57,6 +72,7 @@ const options = program.opts();
         mediaOutputFolder: mediaOutputPath,
         mediaPathPrefix: options.mediaPrefix,
         optimizeImages: options.optimizeImages,
+        skipExisting: options.skipExisting,
         debug: debugLevel,
       });
 
@@ -64,6 +80,15 @@ const options = program.opts();
       mediaPathMap = mediaResult.pathMap;
 
       console.log(`✅ Processed ${mediaData.length} media files`);
+
+      // Save media results to JSON file
+      const mediaResultsJson = jsonStringify({
+        mediaData,
+        mediaPathMap,
+      });
+
+      writeToFileSync(mediaResultsPath, mediaResultsJson);
+      console.log(`📝 Media results saved to: ${mediaResultsPath}`);
     } else {
       console.log(`⏭️ Skipping media processing`);
     }
@@ -92,6 +117,7 @@ const options = program.opts();
     console.log(`📝 Output saved to: ${outputPath}`);
   } catch (error) {
     console.error(`❌ Error processing vault: ${error.message}`);
+    console.error(error.stack);
     process.exit(1);
   }
 })();
@@ -100,3 +126,5 @@ const options = program.opts();
 // npm run convert -- -i test/testVault -o testOutput.json
 // npm run convert -- -i test/testVault -o testOutput.json --media-output public/assets --media-prefix /assets
 // npm run convert -- -i test/testVault -o testOutput.json --skip-media
+// npm run convert -- -i test/testVault -o testOutput.json --skip-existing
+// npm run convert -- -i test/testVault -o testOutput.json --media-results media-data.json
