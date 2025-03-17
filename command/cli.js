@@ -4,6 +4,7 @@ import { Command } from "commander";
 import path from "path";
 import metamark from "../dist/index.js";
 
+import { processFolder } from "../dist/index.js";
 const program = new Command();
 
 program
@@ -25,7 +26,7 @@ try {
   const outputPath = path.resolve(process.cwd(), options.output);
 
   // Process the vault
-  const vaultData = metamark.obsidian.vault.process(inputPath, {
+  const vaultData = processFolder(inputPath, {
     debug: parseInt(options.debug),
     notePathPrefix: options.notePrefix,
     assetPathPrefix: options.assetPrefix,

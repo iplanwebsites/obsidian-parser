@@ -30,7 +30,8 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var src_exports = {};
 __export(src_exports, {
-  default: () => src_default
+  default: () => src_default,
+  processFolder: () => processFolder
 });
 module.exports = __toCommonJS(src_exports);
 
@@ -13013,41 +13014,44 @@ var Regex = {
 };
 
 // src/obsidian.vault.process.ts
-function obsidianVaultProcess(dirPath, opts) {
+function processVault(dirPath, opts) {
   dirPath = import_node_path2.default.normalize(dirPath);
-  const filePathAllowSet = opts?.filePathAllowSetBuilder?.(dirPath) ?? defaultFilePathAllowSetBuilder(dirPath);
-  const toLink = toLinkBuilder(
-    opts?.toLinkBuilderOpts ?? {
-      filePathAllowSet,
-      toSlug: src_default.utility.toSlug,
-      prefix: opts?.notePathPrefix ?? "/content"
-    }
-  );
-  const processor = unifiedProcessorBuilder({ toLink });
+  const allowedFiles = opts?.filePathAllowSetBuilder?.(dirPath) ?? buildDefaultAllowedFileSet(dirPath);
+  const toLink = toLinkBuilder({
+    filePathAllowSet: allowedFiles,
+    toSlug: src_default.utility.toSlug,
+    prefix: opts?.notePathPrefix ?? "/content",
+    ...opts?.toLinkBuilderOpts || {}
+  });
+  const processor = buildMarkdownProcessor({ toLink });
   const pages = [];
-  for (const filePath of filePathAllowSet) {
-    const { name: fileName } = import_node_path2.default.parse(filePath);
-    const raw = import_node_fs2.default.readFileSync(filePath, "utf8");
-    const { content: md, data: frontmatter } = (0, import_gray_matter2.default)(raw);
-    const mdastRoot = processor.parse(md);
-    const htmlString = processor.processSync(md).toString();
-    const relativePath = import_node_path2.default.relative(dirPath, filePath);
-    const file = {
-      fileName,
-      slug: (0, import_slugify2.default)(fileName, { decamelize: false }),
-      frontmatter,
-      firstParagraphText: mdast_exports.getFirstParagraphText(mdastRoot) ?? "",
-      plain: hast_exports.getPlainText(htmlString),
-      // for test2 speech. Doesnt work :()
-      html: htmlString,
-      toc: hast_exports.getToc(htmlString),
-      originalFilePath: relativePath
-    };
-    pages.push(file);
+  for (const filePath of allowedFiles) {
+    if (typeof filePath !== "string" || !filePath.endsWith(".md")) continue;
+    try {
+      const { name: fileName } = import_node_path2.default.parse(filePath);
+      const raw = import_node_fs2.default.readFileSync(filePath, "utf8");
+      const { content: markdown2, data: frontmatter } = (0, import_gray_matter2.default)(raw);
+      const mdastRoot = processor.parse(markdown2);
+      const htmlString = processor.processSync(markdown2).toString();
+      const relativePath = import_node_path2.default.relative(dirPath, filePath);
+      const file = {
+        fileName,
+        slug: (0, import_slugify2.default)(fileName, { decamelize: false }),
+        frontmatter,
+        firstParagraphText: mdast_exports.getFirstParagraphText(mdastRoot) ?? "",
+        plain: hast_exports.getPlainText(htmlString),
+        html: htmlString,
+        toc: hast_exports.getToc(htmlString),
+        originalFilePath: relativePath
+      };
+      pages.push(file);
+    } catch (error) {
+      console.error(`Error processing ${filePath}:`, error);
+    }
   }
   return pages;
 }
-var unifiedProcessorBuilder = ({ toLink }) => {
+function buildMarkdownProcessor({ toLink }) {
   return (0, import_unified.unified)().use(import_remark_parse.default).use(import_remark_gfm.default).use(import_remark_obsidian_link.remarkObsidianLink, { toLink }).use(import_remark_callouts.default).use(import_remark_math.default).use(import_remark_rehype.default).use(import_rehype_external_links.default).use(import_rehype_slug.default).use(import_rehype_autolink_headings.default, { behavior: "wrap" }).use(import_rehype_highlight.default, {
     languages: { ...grammars, elixir }
   }).use(import_chtml.default, {
@@ -13055,33 +13059,40 @@ var unifiedProcessorBuilder = ({ toLink }) => {
       fontURL: "https://cdn.jsdelivr.net/npm/mathjax@3/es5/output/chtml/fonts/woff-v2"
     }
   }).use(import_rehype_stringify.default);
-};
-var defaultFilePathAllowSetBuilder = (dirPath) => {
-  const filePathAllowSet = /* @__PURE__ */ new Set();
+}
+function buildDefaultAllowedFileSet(dirPath) {
+  const allowedFiles = /* @__PURE__ */ new Set();
   function scanDirectory(currentPath) {
-    const dirEntries = import_node_fs2.default.readdirSync(currentPath, { withFileTypes: true });
-    dirEntries.forEach((dirEntry) => {
-      const entryPath = import_node_path2.default.join(currentPath, dirEntry.name);
-      if (dirEntry.isDirectory()) {
+    const entries = import_node_fs2.default.readdirSync(currentPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = import_node_path2.default.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
         scanDirectory(entryPath);
-      } else if (dirEntry.isFile()) {
-        const raw = import_node_fs2.default.readFileSync(entryPath, "utf8");
-        const { data: frontmatter } = (0, import_gray_matter2.default)(raw);
-        if (frontmatter?.public) {
-          filePathAllowSet.add(entryPath);
+      } else if (entry.isFile() && entry.name.endsWith(".md")) {
+        try {
+          const raw = import_node_fs2.default.readFileSync(entryPath, "utf8");
+          const { data: frontmatter } = (0, import_gray_matter2.default)(raw);
+          if (frontmatter?.public) {
+            allowedFiles.add(entryPath);
+          }
+        } catch (error) {
+          console.error(`Error reading ${entryPath}:`, error);
         }
       }
-    });
+    }
   }
   scanDirectory(dirPath);
-  return filePathAllowSet;
-};
+  return allowedFiles;
+}
 
 // src/index.ts
 var metamark = {
+  processFolder: processVault,
+  //obsidian-optimized method
+  // LEGACY export structure (metamark):
   obsidian: {
     vault: {
-      process: obsidianVaultProcess
+      process: processVault
     }
   },
   utility: {
@@ -13089,3 +13100,8 @@ var metamark = {
   }
 };
 var src_default = metamark;
+var processFolder = processVault;
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  processFolder
+});

@@ -14,171 +14,137 @@ import rehypeStringify from "rehype-stringify";
 import remarkCallouts from "remark-callouts";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { remarkObsidianLink } from "remark-obsidian-link"; //metadown version 
-import remarkParse from "remark-parse"; 
+import { remarkObsidianLink } from "remark-obsidian-link";
+import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
-import remarkImages from 'remark-images' //wip
-//import wikiLinkPlugin from "@portaljs/remark-wiki-link"; ///wip 2
-import wikiLinkPlugin from 'remark-wiki-link-plus';
 import { unified } from "unified";
 import m from "./";
 import * as lib from "./lib";
 import { toLinkBuilder } from "./obsidian.vault.toLinkBuilder";
 import { Metamark } from "./types";
 
-// import {remarkWikiParser} from './myWikiParser' //wip 3
-
-import remarkWikiParser from './myWikiParser2' //wip 3
-
-
 /**
  * Process an Obsidian vault directory and return file data for public files
  */
-export function obsidianVaultProcess(
+export function processVault(
   dirPath: string,
   opts?: Metamark.Obsidian.Vault.ProcessOptions,
 ): Metamark.Obsidian.Vault.FileData[] {
-  // Normalize the input path first
+  // Normalize the input path
   dirPath = path.normalize(dirPath);
    
-  // handle options
-  const filePathAllowSet =
+  // Get the allowed file paths (public files only)
+  const allowedFiles: Set<string> =
     opts?.filePathAllowSetBuilder?.(dirPath) ??
-    defaultFilePathAllowSetBuilder(dirPath);
+    buildDefaultAllowedFileSet(dirPath);
 
-  const toLink = toLinkBuilder(
-    opts?.toLinkBuilderOpts ?? {
-      filePathAllowSet,
-      toSlug: m.utility.toSlug,
-      prefix: opts?.notePathPrefix ?? "/content",
-    },
-  );
+  // Build link transformer
+  const toLink = toLinkBuilder({
+    filePathAllowSet: allowedFiles,
+    toSlug: m.utility.toSlug,
+    prefix: opts?.notePathPrefix ?? "/content",
+    ...(opts?.toLinkBuilderOpts || {})
+  });
 
-  const processor = unifiedProcessorBuilder({ toLink });
+  // Create unified processor
+  const processor = buildMarkdownProcessor({ toLink });
 
-  // collect pages
+  // Process pages
   const pages: Metamark.Obsidian.Vault.FileData[] = [];
 
-  for (const filePath of filePathAllowSet) {
-    const { name: fileName } = path.parse(filePath);
-    const raw = fs.readFileSync(filePath, "utf8");
-    const { content: md, data: frontmatter } = matter(raw);
+  for (const filePath of allowedFiles) {
+    // Skip non-markdown files
+    if (typeof filePath !== 'string' || !filePath.endsWith('.md')) continue;
+    
+    try {
+      // Parse file
+      const { name: fileName } = path.parse(filePath);
+      const raw = fs.readFileSync(filePath, "utf8");
+      const { content: markdown, data: frontmatter } = matter(raw);
 
-    const mdastRoot: MdastRoot = processor.parse(md);
-    const htmlString = processor.processSync(md).toString();
+      // Process to HTML
+      const mdastRoot = processor.parse(markdown) as MdastRoot;
+      const htmlString = processor.processSync(markdown).toString();
 
-    // Calculate relative path from vault root
-    const relativePath = path.relative(dirPath, filePath);
+      // Calculate relative path from vault root
+      const relativePath = path.relative(dirPath, filePath);
 
-    const file: Metamark.Obsidian.Vault.FileData = {
-      fileName,
-      slug: slugify(fileName, { decamelize: false }),
-      frontmatter,
-      firstParagraphText: lib.mdast.getFirstParagraphText(mdastRoot) ?? "",
-      plain:  lib.hast.getPlainText(htmlString), // for text2speech, or for plain text emails.  
-   
-      html: htmlString,
+      // Build file data object
+      const file: Metamark.Obsidian.Vault.FileData = {
+        fileName,
+        slug: slugify(fileName, { decamelize: false }),
+        frontmatter,
+        firstParagraphText: lib.mdast.getFirstParagraphText(mdastRoot) ?? "",
+        plain: lib.hast.getPlainText(htmlString),
+        html: htmlString,
         toc: lib.hast.getToc(htmlString),
-      originalFilePath: relativePath,
-    };
+        originalFilePath: relativePath,
+      };
 
-    pages.push(file);
+      pages.push(file);
+    } catch (error) {
+      console.error(`Error processing ${filePath}:`, error);
+    }
   }
 
   return pages;
 }
 
-const unifiedProcessorBuilder: Metamark.Obsidian.Vault.UnifiedProcessorBuilder =
-  ({ toLink }) => {
-    return (
-      unified()
-        .use(remarkParse)
-        .use(remarkGfm)
-      
-       // .use(wikiLinkPlugin, { pathFormat: "obsidian-absolute" })//  
-         .use(remarkObsidianLink, { toLink })   //metadown version
-
-       //  .use(wikiLinkPlugin )
-        // wikiLinkPlugin
-
-         /*
-          .use(remarkWikiParser, {
-            debug:true,
-            toLink, 
-            toImage: ({ value, alias }) => ({
-            uri: `/assets/${value}`,
-            title: alias,
-            value: alias || value
-          }),
-        }) //wip 3
-         */
-       
-
-      //  .use(wikiLinkPlugin, { pathFormat: "obsidian-absolute" })//  
-        // https://www.npmjs.com/package/@portaljs/remark-wiki-link
-           
-
-        ///images remains after parsing... wip
-       
-       /* .use(remarkImages, {
-          imageExtensions: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'], //— which file extensions to consider as images, without dots
-          link: true //— whether to wrap the image with a link to it
-        })
-          */
-      /* */
-         .use(remarkCallouts)
-        .use(remarkMath)
-        .use(remarkRehype)
-    
-        .use(rehypeExternalLinks)
-        .use(rehypeSlug)
-        
-        .use(rehypeAutolinkHeadings, { behavior: "wrap" })
-        // 37 common languages https://github.com/wooorm/lowlight/blob/main/lib/common.js
-        .use(rehypeHighlight, {
-          languages: { ...commonLanguagesRecord, elixir },
-        })
-        .use(rehypeMathjaxChtml, {
-          chtml: {
-            fontURL:
-              "https://cdn.jsdelivr.net/npm/mathjax@3/es5/output/chtml/fonts/woff-v2",
-          },
-        })
-         
-        .use(rehypeStringify)
-    );
-  };
+/**
+ * Build the unified processor with a single wiki link parser
+ */
+function buildMarkdownProcessor({ toLink }: { toLink: ReturnType<typeof toLinkBuilder> }) {
+  return unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkObsidianLink, { toLink })
+    .use(remarkCallouts)
+    .use(remarkMath)
+    .use(remarkRehype)
+    .use(rehypeExternalLinks)
+    .use(rehypeSlug)
+    .use(rehypeAutolinkHeadings, { behavior: "wrap" })
+    .use(rehypeHighlight, {
+      languages: { ...commonLanguagesRecord, elixir },
+    })
+    .use(rehypeMathjaxChtml, {
+      chtml: {
+        fontURL: "https://cdn.jsdelivr.net/npm/mathjax@3/es5/output/chtml/fonts/woff-v2",
+      },
+    })
+    .use(rehypeStringify);
+}
 
 /**
- * This function is the default implementation of the "allow set" builder. It
- * takes the dirpath and constructs from is a `Set<string>` that represents the
- * "allow set", which is the set of files that are considered public, and viable
- * to be linked to in other notes.
+ * Build a set of allowed file paths (public files only)
  */
-const defaultFilePathAllowSetBuilder: Metamark.Obsidian.Vault.FilePathAllowSetBuilder =
-  (dirPath) => {
-    const filePathAllowSet = new Set<string>();
+function buildDefaultAllowedFileSet(dirPath: string): Set<string> {
+  const allowedFiles = new Set<string>();
 
-    function scanDirectory(currentPath: string) {
-      const dirEntries = fs.readdirSync(currentPath, { withFileTypes: true });
+  function scanDirectory(currentPath: string) {
+    const entries = fs.readdirSync(currentPath, { withFileTypes: true });
 
-      dirEntries.forEach((dirEntry) => {
-        const entryPath = path.join(currentPath, dirEntry.name);
+    for (const entry of entries) {
+      const entryPath = path.join(currentPath, entry.name);
 
-        if (dirEntry.isDirectory()) {
-          // Recursively scan subdirectories
-          scanDirectory(entryPath);
-        } else if (dirEntry.isFile()) {
+      if (entry.isDirectory()) {
+        // Recursively scan subdirectories
+        scanDirectory(entryPath);
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        try {
           const raw = fs.readFileSync(entryPath, "utf8");
           const { data: frontmatter } = matter(raw);
 
           if (frontmatter?.public) {
-            filePathAllowSet.add(entryPath);
+            allowedFiles.add(entryPath);
           }
+        } catch (error) {
+          console.error(`Error reading ${entryPath}:`, error);
         }
-      });
+      }
     }
+  }
 
-    scanDirectory(dirPath);
-    return filePathAllowSet;
-  };
+  scanDirectory(dirPath);
+  return allowedFiles;
+}
