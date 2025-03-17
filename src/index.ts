@@ -4,11 +4,12 @@ import { processFolder } from "./processFolder";
 export * from "./types";
 
 export * from "./lib/utility"; ///export all utilities to top level
-export { processFolder };
+
 
   // LEGACY export structure (metamark):
 const metamark = {
- 
+  ...lib.utility,
+  processFolder,
 
 
   obsidian: {
@@ -21,6 +22,8 @@ const metamark = {
   },
 };
 
-export default metamark; //legacy export
+  export default metamark; //legacy export
 
+
+  export { processFolder };
 

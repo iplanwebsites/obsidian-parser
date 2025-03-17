@@ -111,6 +111,7 @@ declare function jsonStringify(o: any): string;
 declare function writeToFileSync(filePath: string, content: string): void;
 
 declare const metamark: {
+    processFolder: typeof processFolder;
     obsidian: {
         vault: {
             process: typeof processFolder;
@@ -128,6 +129,16 @@ declare const metamark: {
         jsonStringify(o: any): string;
         writeToFileSync(filePath: string, content: string): void;
     };
+    toSlug(s: string): string;
+    getFileName(filePath: string): string;
+    getFrontmatterAndMd(filePath: string): {
+        md: string;
+        frontmatter: {
+            [key: string]: any;
+        };
+    };
+    jsonStringify(o: any): string;
+    writeToFileSync(filePath: string, content: string): void;
 };
 
 export { Metamark, metamark as default, getFileName, getFrontmatterAndMd, jsonStringify, processFolder, toSlug, writeToFileSync };

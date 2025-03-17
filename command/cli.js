@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import path from "path";
-import metamark from "../dist/index.js";
+// import metamark from "../dist/index.js";
 
 import {
   processFolder,

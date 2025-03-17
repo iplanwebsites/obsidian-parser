@@ -13092,6 +13092,8 @@ function buildDefaultAllowedFileSet(dirPath) {
 
 // src/index.ts
 var metamark = {
+  ...utility_exports,
+  processFolder,
   obsidian: {
     vault: {
       process: processFolder
