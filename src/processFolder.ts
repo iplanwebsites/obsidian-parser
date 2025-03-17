@@ -24,8 +24,7 @@ import { toLinkBuilder } from "./toLinkBuilder";
 import { Metamark } from "./types";
 import { MediaFileData, MediaPathMap, ProcessMediaOptions } from "./processMedia";
 
-// Look at the actual ProcessOptions interface
-// Let's make our modifications more explicit
+// Extend existing types without redefining namespaces
 declare module "./types" {
   namespace Metamark {
     namespace Obsidian {
@@ -37,14 +36,8 @@ declare module "./types" {
           mediaOptions?: ProcessMediaOptions;
           mediaData?: MediaFileData[];
           mediaPathMap?: MediaPathMap;
-        }
-        
-        interface FileData {
-          // Add media property
-          media?: {
-            pathMap?: MediaPathMap;
-            data?: MediaFileData[];
-          };
+          // Option to determine if media details should be included in output
+          includeMediaData?: boolean;
         }
       }
     }
@@ -128,14 +121,6 @@ export async function processFolder(
         originalFilePath: relativePath,
       };
 
-      // Include media data if available
-      if (opts?.mediaData || Object.keys(mediaPathMap).length > 0) {
-        file.media = {
-          pathMap: mediaPathMap,
-          data: opts?.mediaData
-        };
-      }
-
       pages.push(file);
       log(2, `✅ Processed: ${fileName}`);
     } catch (error) {
@@ -144,6 +129,16 @@ export async function processFolder(
   }
 
   log(1, `🎉 Successfully processed ${pages.length} files`);
+  
+  // If includeMediaData is true, add the media data to the first page object only
+  // This is useful if you need the media data elsewhere but don't want to duplicate it
+  if (opts?.includeMediaData && pages.length > 0 && opts?.mediaData) {
+    // Create a special property on the first page to hold the media catalog
+    // @ts-ignore - Adding custom property
+    pages[0]._mediaData = opts.mediaData;
+    log(1, `📊 Added media catalog to first page object`);
+  }
+  
   return pages;
 }
 

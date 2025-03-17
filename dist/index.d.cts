@@ -165,12 +165,7 @@ declare module "./types" {
                     mediaOptions?: ProcessMediaOptions;
                     mediaData?: MediaFileData[];
                     mediaPathMap?: MediaPathMap;
-                }
-                interface FileData {
-                    media?: {
-                        pathMap?: MediaPathMap;
-                        data?: MediaFileData[];
-                    };
+                    includeMediaData?: boolean;
                 }
             }
         }

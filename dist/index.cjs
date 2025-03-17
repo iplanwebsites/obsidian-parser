@@ -13060,12 +13060,6 @@ async function processFolder(dirPath, opts) {
         toc: hast_exports.getToc(htmlString),
         originalFilePath: relativePath
       };
-      if (opts?.mediaData || Object.keys(mediaPathMap).length > 0) {
-        file.media = {
-          pathMap: mediaPathMap,
-          data: opts?.mediaData
-        };
-      }
       pages.push(file);
       log(2, `\u2705 Processed: ${fileName}`);
     } catch (error) {
@@ -13073,6 +13067,10 @@ async function processFolder(dirPath, opts) {
     }
   }
   log(1, `\u{1F389} Successfully processed ${pages.length} files`);
+  if (opts?.includeMediaData && pages.length > 0 && opts?.mediaData) {
+    pages[0]._mediaData = opts.mediaData;
+    log(1, `\u{1F4CA} Added media catalog to first page object`);
+  }
   return pages;
 }
 function replaceImagePaths(html, mediaPathMap, basePath) {
