@@ -22,21 +22,57 @@ import m from ".";
 import * as lib from "./lib";
 import { toLinkBuilder } from "./toLinkBuilder";
 import { Metamark } from "./types";
+import { MediaFileData, MediaPathMap, ProcessMediaOptions } from "./processMedia";
+
+// Look at the actual ProcessOptions interface
+// Let's make our modifications more explicit
+declare module "./types" {
+  namespace Metamark {
+    namespace Obsidian {
+      namespace Vault {
+        interface ProcessOptions {
+          // Make sure debug is explicitly declared
+          debug?: number;
+          // Add media-related properties
+          mediaOptions?: ProcessMediaOptions;
+          mediaData?: MediaFileData[];
+          mediaPathMap?: MediaPathMap;
+        }
+        
+        interface FileData {
+          // Add media property
+          media?: {
+            pathMap?: MediaPathMap;
+            data?: MediaFileData[];
+          };
+        }
+      }
+    }
+  }
+}
 
 /**
  * Process an Obsidian vault directory and return file data for public files
  */
-export function processFolder(
+export async function processFolder(
   dirPath: string,
   opts?: Metamark.Obsidian.Vault.ProcessOptions,
-): Metamark.Obsidian.Vault.FileData[] {
+): Promise<Metamark.Obsidian.Vault.FileData[]> {
   // Normalize the input path
   dirPath = path.normalize(dirPath);
+  
+  // Create logging function based on debug level
+  const debugLevel = opts?.debug || 0;
+  const log = createLogger(debugLevel);
+  
+  log(1, "🔍 Processing Obsidian vault: " + dirPath);
    
   // Get the allowed file paths (public files only)
   const allowedFiles: Set<string> =
     opts?.filePathAllowSetBuilder?.(dirPath) ??
-    buildDefaultAllowedFileSet(dirPath);
+    buildDefaultAllowedFileSet(dirPath, log);
+
+  log(1, `📄 Found ${allowedFiles.size} allowed files to process`);
 
   // Build link transformer
   const toLink = toLinkBuilder({
@@ -49,6 +85,9 @@ export function processFolder(
   // Create unified processor
   const processor = buildMarkdownProcessor({ toLink });
 
+  // Media path map (can be passed in or will be empty if not available)
+  const mediaPathMap: MediaPathMap = opts?.mediaPathMap || {};
+
   // Process pages
   const pages: Metamark.Obsidian.Vault.FileData[] = [];
 
@@ -57,6 +96,8 @@ export function processFolder(
     if (typeof filePath !== 'string' || !filePath.endsWith('.md')) continue;
     
     try {
+      log(2, `⚙️ Processing file: ${filePath}`);
+      
       // Parse file
       const { name: fileName } = path.parse(filePath);
       const raw = fs.readFileSync(filePath, "utf8");
@@ -64,7 +105,13 @@ export function processFolder(
 
       // Process to HTML
       const mdastRoot = processor.parse(markdown) as MdastRoot;
-      const htmlString = processor.processSync(markdown).toString();
+      let htmlString = processor.processSync(markdown).toString();
+
+      // Replace image paths with optimized versions if available
+      if (Object.keys(mediaPathMap).length > 0) {
+        htmlString = replaceImagePaths(htmlString, mediaPathMap, dirPath);
+        log(2, `🖼️ Replaced image paths in: ${fileName}`);
+      }
 
       // Calculate relative path from vault root
       const relativePath = path.relative(dirPath, filePath);
@@ -81,13 +128,61 @@ export function processFolder(
         originalFilePath: relativePath,
       };
 
+      // Include media data if available
+      if (opts?.mediaData || Object.keys(mediaPathMap).length > 0) {
+        file.media = {
+          pathMap: mediaPathMap,
+          data: opts?.mediaData
+        };
+      }
+
       pages.push(file);
+      log(2, `✅ Processed: ${fileName}`);
     } catch (error) {
-      console.error(`Error processing ${filePath}:`, error);
+      log(0, `❌ Error processing ${filePath}: ${error}`);
     }
   }
 
+  log(1, `🎉 Successfully processed ${pages.length} files`);
   return pages;
+}
+
+/**
+ * Replace image paths in HTML with optimized versions
+ */
+function replaceImagePaths(
+  html: string, 
+  mediaPathMap: MediaPathMap,
+  basePath: string
+): string {
+  // Use regex to find image tags and replace their src attributes
+  return html.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/g, (match, src) => {
+    // Determine if this is a relative path that needs replacement
+    if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/')) {
+      // External or already absolute path, don't replace
+      return match;
+    }
+    
+    // Normalize path to match our media catalog
+    let normalizedPath = src;
+    
+    // Check if it's in our media map
+    if (mediaPathMap[normalizedPath]) {
+      // Replace with optimized path
+      const newSrc = mediaPathMap[normalizedPath];
+      return match.replace(src, newSrc);
+    }
+    
+    // Try checking with base path
+    const fullPath = path.relative(basePath, path.resolve(basePath, normalizedPath));
+    if (mediaPathMap[fullPath]) {
+      const newSrc = mediaPathMap[fullPath];
+      return match.replace(src, newSrc);
+    }
+    
+    // If not found, keep original
+    return match;
+  });
 }
 
 /**
@@ -118,16 +213,25 @@ function buildMarkdownProcessor({ toLink }: { toLink: ReturnType<typeof toLinkBu
 /**
  * Build a set of allowed file paths (public files only)
  */
-function buildDefaultAllowedFileSet(dirPath: string): Set<string> {
+function buildDefaultAllowedFileSet(
+  dirPath: string,
+  log: (level: number, message: string) => void
+): Set<string> {
   const allowedFiles = new Set<string>();
 
   function scanDirectory(currentPath: string) {
     const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+    log(3, `📂 Scanning directory: ${currentPath}`);
 
     for (const entry of entries) {
       const entryPath = path.join(currentPath, entry.name);
 
       if (entry.isDirectory()) {
+        // Skip hidden directories
+        if (entry.name.startsWith(".")) {
+          log(3, `⏭️ Skipping hidden directory: ${entry.name}`);
+          continue;
+        }
         // Recursively scan subdirectories
         scanDirectory(entryPath);
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
@@ -137,9 +241,12 @@ function buildDefaultAllowedFileSet(dirPath: string): Set<string> {
 
           if (frontmatter?.public) {
             allowedFiles.add(entryPath);
+            log(3, `✅ Found public file: ${entry.name}`);
+          } else {
+            log(3, `⏭️ Skipping non-public file: ${entry.name}`);
           }
         } catch (error) {
-          console.error(`Error reading ${entryPath}:`, error);
+          log(0, `❌ Error reading ${entryPath}: ${error}`);
         }
       }
     }
@@ -147,4 +254,17 @@ function buildDefaultAllowedFileSet(dirPath: string): Set<string> {
 
   scanDirectory(dirPath);
   return allowedFiles;
+}
+
+/**
+ * Create a logger function based on debug level
+ * @param level Debug level (0-3)
+ * @returns Logging function
+ */
+function createLogger(level: number) {
+  return function log(messageLevel: number, message: string) {
+    if (messageLevel <= level) {
+      console.log(message);
+    }
+  };
 }

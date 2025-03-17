@@ -95,9 +95,91 @@ declare namespace Metamark {
 }
 
 /**
+ * Interface for media file data
+ */
+interface MediaFileData {
+    originalPath: string;
+    fileName: string;
+    fileExt: string;
+    mimeType: string;
+    sizes: {
+        [key: string]: {
+            width: number;
+            height: number;
+            format: string;
+            outputPath: string;
+            publicPath: string;
+            size: number;
+        }[];
+    };
+    metadata: {
+        width?: number;
+        height?: number;
+        format?: string;
+        size?: number;
+        exif?: any;
+    };
+}
+/**
+ * Options for processing media files
+ */
+interface ProcessMediaOptions {
+    mediaOutputFolder?: string;
+    mediaPathPrefix?: string;
+    optimizeImages?: boolean;
+    imageSizes?: Array<{
+        width: number | null;
+        height: number | null;
+        suffix: string;
+    }>;
+    imageFormats?: Array<{
+        format: string;
+        options: any;
+    }>;
+    debug?: number;
+}
+/**
+ * Media path mapping for image replacement
+ */
+interface MediaPathMap {
+    /** Maps original relative paths to optimized public paths */
+    [originalPath: string]: string;
+}
+/**
+ * Process media files in an Obsidian vault directory
+ * @param dirPath Path to the Obsidian vault directory
+ * @param opts Processing options
+ * @returns Object containing media data and path mapping
+ */
+declare function processMedia(dirPath: string, opts?: ProcessMediaOptions): Promise<{
+    mediaData: MediaFileData[];
+    pathMap: MediaPathMap;
+}>;
+
+declare module "./types" {
+    namespace Metamark {
+        namespace Obsidian {
+            namespace Vault {
+                interface ProcessOptions {
+                    debug?: number;
+                    mediaOptions?: ProcessMediaOptions;
+                    mediaData?: MediaFileData[];
+                    mediaPathMap?: MediaPathMap;
+                }
+                interface FileData {
+                    media?: {
+                        pathMap?: MediaPathMap;
+                        data?: MediaFileData[];
+                    };
+                }
+            }
+        }
+    }
+}
+/**
  * Process an Obsidian vault directory and return file data for public files
  */
-declare function processFolder(dirPath: string, opts?: Metamark.Obsidian.Vault.ProcessOptions): Metamark.Obsidian.Vault.FileData[];
+declare function processFolder(dirPath: string, opts?: Metamark.Obsidian.Vault.ProcessOptions): Promise<Metamark.Obsidian.Vault.FileData[]>;
 
 declare function toSlug(s: string): string;
 declare function getFileName(filePath: string): string;
@@ -112,9 +194,11 @@ declare function writeToFileSync(filePath: string, content: string): void;
 
 declare const metamark: {
     processFolder: typeof processFolder;
+    processMedia: typeof processMedia;
     obsidian: {
         vault: {
             process: typeof processFolder;
+            processMedia: typeof processMedia;
         };
     };
     utility: {
@@ -141,4 +225,4 @@ declare const metamark: {
     writeToFileSync(filePath: string, content: string): void;
 };
 
-export { Metamark, metamark as default, getFileName, getFrontmatterAndMd, jsonStringify, processFolder, toSlug, writeToFileSync };
+export { type MediaFileData, type MediaPathMap, Metamark, type ProcessMediaOptions, metamark as default, getFileName, getFrontmatterAndMd, jsonStringify, processFolder, processMedia, toSlug, writeToFileSync };

@@ -12983,9 +12983,13 @@ var Regex = {
 };
 
 // src/processFolder.ts
-function processFolder(dirPath, opts) {
+async function processFolder(dirPath, opts) {
   dirPath = path2.normalize(dirPath);
-  const allowedFiles = opts?.filePathAllowSetBuilder?.(dirPath) ?? buildDefaultAllowedFileSet(dirPath);
+  const debugLevel = opts?.debug || 0;
+  const log = createLogger(debugLevel);
+  log(1, "\u{1F50D} Processing Obsidian vault: " + dirPath);
+  const allowedFiles = opts?.filePathAllowSetBuilder?.(dirPath) ?? buildDefaultAllowedFileSet(dirPath, log);
+  log(1, `\u{1F4C4} Found ${allowedFiles.size} allowed files to process`);
   const toLink = toLinkBuilder({
     filePathAllowSet: allowedFiles,
     toSlug: src_default.utility.toSlug,
@@ -12993,15 +12997,21 @@ function processFolder(dirPath, opts) {
     ...opts?.toLinkBuilderOpts || {}
   });
   const processor = buildMarkdownProcessor({ toLink });
+  const mediaPathMap = opts?.mediaPathMap || {};
   const pages = [];
   for (const filePath of allowedFiles) {
     if (typeof filePath !== "string" || !filePath.endsWith(".md")) continue;
     try {
+      log(2, `\u2699\uFE0F Processing file: ${filePath}`);
       const { name: fileName } = path2.parse(filePath);
       const raw = fs2.readFileSync(filePath, "utf8");
       const { content: markdown2, data: frontmatter } = matter2(raw);
       const mdastRoot = processor.parse(markdown2);
-      const htmlString = processor.processSync(markdown2).toString();
+      let htmlString = processor.processSync(markdown2).toString();
+      if (Object.keys(mediaPathMap).length > 0) {
+        htmlString = replaceImagePaths(htmlString, mediaPathMap, dirPath);
+        log(2, `\u{1F5BC}\uFE0F Replaced image paths in: ${fileName}`);
+      }
       const relativePath = path2.relative(dirPath, filePath);
       const file = {
         fileName,
@@ -13013,12 +13023,38 @@ function processFolder(dirPath, opts) {
         toc: hast_exports.getToc(htmlString),
         originalFilePath: relativePath
       };
+      if (opts?.mediaData || Object.keys(mediaPathMap).length > 0) {
+        file.media = {
+          pathMap: mediaPathMap,
+          data: opts?.mediaData
+        };
+      }
       pages.push(file);
+      log(2, `\u2705 Processed: ${fileName}`);
     } catch (error) {
-      console.error(`Error processing ${filePath}:`, error);
+      log(0, `\u274C Error processing ${filePath}: ${error}`);
     }
   }
+  log(1, `\u{1F389} Successfully processed ${pages.length} files`);
   return pages;
+}
+function replaceImagePaths(html, mediaPathMap, basePath) {
+  return html.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/g, (match, src) => {
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("/")) {
+      return match;
+    }
+    let normalizedPath = src;
+    if (mediaPathMap[normalizedPath]) {
+      const newSrc = mediaPathMap[normalizedPath];
+      return match.replace(src, newSrc);
+    }
+    const fullPath = path2.relative(basePath, path2.resolve(basePath, normalizedPath));
+    if (mediaPathMap[fullPath]) {
+      const newSrc = mediaPathMap[fullPath];
+      return match.replace(src, newSrc);
+    }
+    return match;
+  });
 }
 function buildMarkdownProcessor({ toLink }) {
   return unified().use(remarkParse).use(remarkGfm).use(remarkObsidianLink, { toLink }).use(remarkCallouts).use(remarkMath).use(remarkRehype).use(rehypeExternalLinks).use(rehypeSlug).use(rehypeAutolinkHeadings, { behavior: "wrap" }).use(rehypeHighlight, {
@@ -13029,13 +13065,18 @@ function buildMarkdownProcessor({ toLink }) {
     }
   }).use(rehypeStringify);
 }
-function buildDefaultAllowedFileSet(dirPath) {
+function buildDefaultAllowedFileSet(dirPath, log) {
   const allowedFiles = /* @__PURE__ */ new Set();
   function scanDirectory(currentPath) {
     const entries = fs2.readdirSync(currentPath, { withFileTypes: true });
+    log(3, `\u{1F4C2} Scanning directory: ${currentPath}`);
     for (const entry of entries) {
       const entryPath = path2.join(currentPath, entry.name);
       if (entry.isDirectory()) {
+        if (entry.name.startsWith(".")) {
+          log(3, `\u23ED\uFE0F Skipping hidden directory: ${entry.name}`);
+          continue;
+        }
         scanDirectory(entryPath);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
         try {
@@ -13043,9 +13084,12 @@ function buildDefaultAllowedFileSet(dirPath) {
           const { data: frontmatter } = matter2(raw);
           if (frontmatter?.public) {
             allowedFiles.add(entryPath);
+            log(3, `\u2705 Found public file: ${entry.name}`);
+          } else {
+            log(3, `\u23ED\uFE0F Skipping non-public file: ${entry.name}`);
           }
         } catch (error) {
-          console.error(`Error reading ${entryPath}:`, error);
+          log(0, `\u274C Error reading ${entryPath}: ${error}`);
         }
       }
     }
@@ -13053,14 +13097,272 @@ function buildDefaultAllowedFileSet(dirPath) {
   scanDirectory(dirPath);
   return allowedFiles;
 }
+function createLogger(level) {
+  return function log(messageLevel, message) {
+    if (messageLevel <= level) {
+      console.log(message);
+    }
+  };
+}
+
+// src/processMedia.ts
+import fs3 from "node:fs";
+import path3 from "node:path";
+import sharp from "sharp";
+var DEFAULT_IMAGE_SIZES = [
+  { width: 640, height: null, suffix: "sm" }
+  // { width: 1024, height: null, suffix: "md" },
+  //{ width: 1920, height: null, suffix: "lg" },
+  //  { width: null, height: null, suffix: "original" } // Original size
+];
+var DEFAULT_IMAGE_FORMATS = [
+  // { format: "webp", options: { quality: 80 } },
+  //  { format: "avif", options: { quality: 65 } },
+  { format: "jpeg", options: { quality: 85, mozjpeg: true } }
+];
+async function processMedia(dirPath, opts) {
+  dirPath = path3.normalize(dirPath);
+  const options = {
+    mediaOutputFolder: opts?.mediaOutputFolder || path3.join(process.cwd(), "public/media"),
+    mediaPathPrefix: opts?.mediaPathPrefix || "/media",
+    optimizeImages: opts?.optimizeImages !== false,
+    imageSizes: opts?.imageSizes || DEFAULT_IMAGE_SIZES,
+    imageFormats: opts?.imageFormats || DEFAULT_IMAGE_FORMATS,
+    debug: opts?.debug || 0
+  };
+  const log = createLogger2(options.debug);
+  log(1, "\u{1F50D} Scanning media files in: " + dirPath);
+  if (!fs3.existsSync(options.mediaOutputFolder)) {
+    fs3.mkdirSync(options.mediaOutputFolder, { recursive: true });
+    log(1, "\u{1F4C1} Created output directory: " + options.mediaOutputFolder);
+  }
+  const mediaFiles = findMediaFiles(dirPath, log);
+  log(1, `\u{1F5BC}\uFE0F Found ${mediaFiles.length} media files to process`);
+  const mediaData = [];
+  const pathMap = {};
+  for (const [index, filePath] of mediaFiles.entries()) {
+    try {
+      log(2, `\u2699\uFE0F Processing media file (${index + 1}/${mediaFiles.length}): ${filePath}`);
+      const mediaFile = await processMediaFile(filePath, dirPath, options, log);
+      mediaData.push(mediaFile);
+      const relativePath = path3.relative(dirPath, filePath).replace(/\\/g, "/");
+      const bestPath = findBestOptimizedPath(mediaFile);
+      if (bestPath) {
+        pathMap[relativePath] = bestPath;
+        log(2, `\u{1F504} Mapped ${relativePath} \u2192 ${bestPath}`);
+      }
+    } catch (error) {
+      log(0, `\u274C Error processing media file ${filePath}: ${error}`);
+    }
+  }
+  log(1, `\u2705 Processed ${mediaData.length} media files successfully`);
+  return { mediaData, pathMap };
+}
+function findBestOptimizedPath(mediaFile) {
+  const sizePreference = ["md", "sm", "lg", "original"];
+  const formatPreference = ["webp", "avif", "jpeg", "jpg", mediaFile.fileExt];
+  for (const size of sizePreference) {
+    if (mediaFile.sizes[size]) {
+      for (const format of formatPreference) {
+        const formatOption = mediaFile.sizes[size]?.find((option) => option.format === format);
+        if (formatOption) {
+          return formatOption.publicPath;
+        }
+      }
+    }
+  }
+  if (mediaFile.sizes.original && mediaFile.sizes.original.length > 0) {
+    return mediaFile.sizes.original[0].publicPath;
+  }
+  return null;
+}
+function findMediaFiles(dirPath, log) {
+  const mediaFiles = [];
+  const mediaExtensions = /* @__PURE__ */ new Set([
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".avif",
+    ".svg",
+    ".mp4",
+    ".webm"
+  ]);
+  function scanDirectory(currentPath) {
+    const entries = fs3.readdirSync(currentPath, { withFileTypes: true });
+    log(3, `\u{1F4C2} Scanning directory: ${currentPath}`);
+    for (const entry of entries) {
+      const entryPath = path3.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name.startsWith(".") || entry.name === "node_modules") {
+          log(3, `\u23ED\uFE0F Skipping directory: ${entry.name}`);
+          continue;
+        }
+        scanDirectory(entryPath);
+      } else if (entry.isFile()) {
+        const ext = path3.extname(entry.name).toLowerCase();
+        if (mediaExtensions.has(ext)) {
+          mediaFiles.push(entryPath);
+          log(3, `\u{1F4C4} Found media file: ${entry.name}`);
+        }
+      }
+    }
+  }
+  scanDirectory(dirPath);
+  return mediaFiles;
+}
+async function processMediaFile(filePath, rootDir, options, log) {
+  const { base: fileName, ext: fileExt } = path3.parse(filePath);
+  const relativePath = path3.relative(rootDir, filePath);
+  const isImage = /\.(jpg|jpeg|png|webp|avif|gif)$/i.test(fileExt);
+  const mediaFile = {
+    originalPath: relativePath,
+    fileName,
+    fileExt: fileExt.slice(1),
+    // Remove the dot
+    mimeType: getMimeType(fileExt),
+    sizes: {},
+    metadata: {}
+  };
+  const stats = fs3.statSync(filePath);
+  mediaFile.metadata.size = stats.size;
+  if (options.optimizeImages && isImage) {
+    try {
+      const imageMetadata = await sharp(filePath).metadata();
+      mediaFile.metadata.width = imageMetadata.width;
+      mediaFile.metadata.height = imageMetadata.height;
+      mediaFile.metadata.format = imageMetadata.format;
+      mediaFile.metadata.exif = imageMetadata.exif;
+      log(2, `\u{1F4CA} Image: ${fileName} (${imageMetadata.width}x${imageMetadata.height}, ${fileExt})`);
+      for (const size of options.imageSizes) {
+        const sizeName = size.suffix;
+        mediaFile.sizes[sizeName] = [];
+        for (const format of options.imageFormats) {
+          if (fileExt.toLowerCase() === ".svg" && format.format === "avif") {
+            log(3, `\u23ED\uFE0F Skipping AVIF conversion for SVG: ${fileName}`);
+            continue;
+          }
+          const dirStructure = path3.dirname(relativePath);
+          const outputDir = path3.join(options.mediaOutputFolder, dirStructure);
+          if (!fs3.existsSync(outputDir)) {
+            fs3.mkdirSync(outputDir, { recursive: true });
+            log(3, `\u{1F4C1} Created directory: ${outputDir}`);
+          }
+          const outputFileName = `${path3.parse(fileName).name}${size.suffix !== "original" ? `-${size.suffix}` : ""}.${format.format}`;
+          const outputPath = path3.join(outputDir, outputFileName);
+          const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${outputFileName}`.replace(/\\/g, "/");
+          if (size.suffix === "original" && format.format !== mediaFile.metadata.format) {
+            log(3, `\u23ED\uFE0F Skipping conversion for original size: ${fileName}`);
+            continue;
+          }
+          let sharpInstance = sharp(filePath);
+          if (size.suffix !== "original") {
+            sharpInstance = sharpInstance.resize({
+              width: size.width || void 0,
+              height: size.height || void 0,
+              withoutEnlargement: true,
+              fit: "inside"
+            });
+          }
+          if (format.format === "webp") {
+            sharpInstance = sharpInstance.webp(format.options);
+          } else if (format.format === "avif") {
+            sharpInstance = sharpInstance.avif(format.options);
+          } else if (format.format === "jpeg" || format.format === "jpg") {
+            sharpInstance = sharpInstance.jpeg(format.options);
+          } else if (format.format === "png") {
+            sharpInstance = sharpInstance.png(format.options);
+          }
+          log(3, `\u{1F504} Converting ${fileName} to ${format.format} (${size.suffix})`);
+          await sharpInstance.toFile(outputPath);
+          const processedStats = fs3.statSync(outputPath);
+          const processedMetadata = await sharp(outputPath).metadata();
+          mediaFile.sizes[sizeName].push({
+            width: processedMetadata.width || 0,
+            height: processedMetadata.height || 0,
+            format: format.format,
+            outputPath,
+            publicPath,
+            size: processedStats.size
+          });
+          const compressionRatio = stats.size > 0 ? ((stats.size - processedStats.size) / stats.size * 100).toFixed(1) : 0;
+          log(2, `\u{1F4BE} Saved: ${publicPath} (${formatBytes(processedStats.size)}, ${compressionRatio}% smaller)`);
+        }
+      }
+    } catch (error) {
+      log(0, `\u274C Error optimizing image ${filePath}: ${error}`);
+      const dirStructure = path3.dirname(relativePath);
+      const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${fileName}`.replace(/\\/g, "/");
+      mediaFile.sizes.original = [{
+        width: mediaFile.metadata.width || 0,
+        height: mediaFile.metadata.height || 0,
+        format: mediaFile.fileExt,
+        outputPath: filePath,
+        publicPath,
+        size: stats.size
+      }];
+    }
+  } else {
+    const dirStructure = path3.dirname(relativePath);
+    const outputDir = path3.join(options.mediaOutputFolder, dirStructure);
+    if (!fs3.existsSync(outputDir)) {
+      fs3.mkdirSync(outputDir, { recursive: true });
+      log(3, `\u{1F4C1} Created directory: ${outputDir}`);
+    }
+    const outputPath = path3.join(outputDir, fileName);
+    fs3.copyFileSync(filePath, outputPath);
+    const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${fileName}`.replace(/\\/g, "/");
+    mediaFile.sizes.original = [{
+      width: 0,
+      height: 0,
+      format: mediaFile.fileExt,
+      outputPath,
+      publicPath,
+      size: stats.size
+    }];
+    log(2, `\u{1F4CB} Copied: ${publicPath} (${formatBytes(stats.size)})`);
+  }
+  return mediaFile;
+}
+function getMimeType(ext) {
+  const mimeTypes = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".avif": "image/avif",
+    ".svg": "image/svg+xml",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm"
+  };
+  return mimeTypes[ext.toLowerCase()] || "application/octet-stream";
+}
+function createLogger2(level) {
+  return function log(messageLevel, message) {
+    if (messageLevel <= level) {
+      console.log(message);
+    }
+  };
+}
+function formatBytes(bytes) {
+  if (bytes === 0) return "0 Bytes";
+  const k = 1024;
+  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
 
 // src/index.ts
 var metamark = {
   ...utility_exports,
   processFolder,
+  processMedia,
   obsidian: {
     vault: {
-      process: processFolder
+      process: processFolder,
+      processMedia
     }
   },
   utility: {
@@ -13074,6 +13376,7 @@ export {
   getFrontmatterAndMd,
   jsonStringify,
   processFolder,
+  processMedia,
   toSlug,
   writeToFileSync
 };
