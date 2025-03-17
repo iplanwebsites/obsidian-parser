@@ -153,7 +153,7 @@ function writeToFileSync(filePath, content) {
   fs.writeFileSync(filePath, content, "utf8");
 }
 
-// src/obsidian.vault.process.ts
+// src/processFolder.ts
 import slugify2 from "@sindresorhus/slugify";
 import matter2 from "gray-matter";
 
@@ -12837,7 +12837,7 @@ var grammars = {
   yaml
 };
 
-// src/obsidian.vault.process.ts
+// src/processFolder.ts
 import fs2 from "node:fs";
 import path2 from "node:path";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -12982,8 +12982,8 @@ var Regex = {
   PageAndBlock: /.+#\^.+/
 };
 
-// src/obsidian.vault.process.ts
-function processVault(dirPath, opts) {
+// src/processFolder.ts
+function processFolder(dirPath, opts) {
   dirPath = path2.normalize(dirPath);
   const allowedFiles = opts?.filePathAllowSetBuilder?.(dirPath) ?? buildDefaultAllowedFileSet(dirPath);
   const toLink = toLinkBuilder({
@@ -13056,12 +13056,12 @@ function buildDefaultAllowedFileSet(dirPath) {
 
 // src/index.ts
 var metamark = {
-  processFolder: processVault,
+  processFolder,
   //obsidian-optimized method
   // LEGACY export structure (metamark):
   obsidian: {
     vault: {
-      process: processVault
+      process: processFolder
     }
   },
   utility: {
@@ -13069,7 +13069,6 @@ var metamark = {
   }
 };
 var src_default = metamark;
-var processFolder = processVault;
 export {
   src_default as default,
   processFolder

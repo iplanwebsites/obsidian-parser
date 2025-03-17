@@ -97,13 +97,13 @@ declare namespace Metamark {
 /**
  * Process an Obsidian vault directory and return file data for public files
  */
-declare function processVault(dirPath: string, opts?: Metamark.Obsidian.Vault.ProcessOptions): Metamark.Obsidian.Vault.FileData[];
+declare function processFolder(dirPath: string, opts?: Metamark.Obsidian.Vault.ProcessOptions): Metamark.Obsidian.Vault.FileData[];
 
 declare const metamark: {
-    processFolder: typeof processVault;
+    processFolder: typeof processFolder;
     obsidian: {
         vault: {
-            process: typeof processVault;
+            process: typeof processFolder;
         };
     };
     utility: {
@@ -119,7 +119,5 @@ declare const metamark: {
         writeToFileSync(filePath: string, content: string): void;
     };
 };
-
-declare const processFolder: typeof processVault;
 
 export { Metamark, metamark as default, processFolder };

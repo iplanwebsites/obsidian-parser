@@ -1,10 +1,10 @@
 import * as lib from "./lib";
-import { processVault } from "./obsidian.vault.process";
+import { processFolder } from "./processFolder";
 
 export * from "./types";
 
 const metamark = {
-  processFolder: processVault, //obsidian-optimized method
+   processFolder, //obsidian-optimized method
 
 
 
@@ -12,7 +12,7 @@ const metamark = {
   // LEGACY export structure (metamark):
   obsidian: {
     vault: {
-      process: processVault,
+      process: processFolder,
     },
   },
   utility: {
@@ -21,4 +21,6 @@ const metamark = {
 };
 
 export default metamark;
-export const processFolder = processVault; 
+
+
+export { processFolder };

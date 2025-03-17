@@ -184,7 +184,7 @@ function writeToFileSync(filePath, content) {
   import_node_fs.default.writeFileSync(filePath, content, "utf8");
 }
 
-// src/obsidian.vault.process.ts
+// src/processFolder.ts
 var import_slugify2 = __toESM(require("@sindresorhus/slugify"), 1);
 var import_gray_matter2 = __toESM(require("gray-matter"), 1);
 
@@ -12868,7 +12868,7 @@ var grammars = {
   yaml
 };
 
-// src/obsidian.vault.process.ts
+// src/processFolder.ts
 var import_node_fs2 = __toESM(require("fs"), 1);
 var import_node_path2 = __toESM(require("path"), 1);
 var import_rehype_autolink_headings = __toESM(require("rehype-autolink-headings"), 1);
@@ -13013,8 +13013,8 @@ var Regex = {
   PageAndBlock: /.+#\^.+/
 };
 
-// src/obsidian.vault.process.ts
-function processVault(dirPath, opts) {
+// src/processFolder.ts
+function processFolder(dirPath, opts) {
   dirPath = import_node_path2.default.normalize(dirPath);
   const allowedFiles = opts?.filePathAllowSetBuilder?.(dirPath) ?? buildDefaultAllowedFileSet(dirPath);
   const toLink = toLinkBuilder({
@@ -13087,12 +13087,12 @@ function buildDefaultAllowedFileSet(dirPath) {
 
 // src/index.ts
 var metamark = {
-  processFolder: processVault,
+  processFolder,
   //obsidian-optimized method
   // LEGACY export structure (metamark):
   obsidian: {
     vault: {
-      process: processVault
+      process: processFolder
     }
   },
   utility: {
@@ -13100,7 +13100,6 @@ var metamark = {
   }
 };
 var src_default = metamark;
-var processFolder = processVault;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   processFolder

@@ -18,7 +18,7 @@ import { remarkObsidianLink } from "remark-obsidian-link";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
-import m from "./";
+import m from ".";
 import * as lib from "./lib";
 import { toLinkBuilder } from "./obsidian.vault.toLinkBuilder";
 import { Metamark } from "./types";
@@ -26,7 +26,7 @@ import { Metamark } from "./types";
 /**
  * Process an Obsidian vault directory and return file data for public files
  */
-export function processVault(
+export function processFolder(
   dirPath: string,
   opts?: Metamark.Obsidian.Vault.ProcessOptions,
 ): Metamark.Obsidian.Vault.FileData[] {
