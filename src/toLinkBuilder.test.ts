@@ -4,8 +4,8 @@ import {
   ObsidianLink,
   toLinkBuilder,
   wikiToObsidian,
-} from "./obsidian.vault.toLinkBuilder";
-import m from "../src/";
+} from "./toLinkBuilder";
+import m from ".";
 
 test("toLinkBuilder", () => {
   const toLink = toLinkBuilder({

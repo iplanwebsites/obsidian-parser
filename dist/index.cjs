@@ -12890,7 +12890,7 @@ var import_remark_parse = __toESM(require("remark-parse"), 1);
 var import_remark_rehype = __toESM(require("remark-rehype"), 1);
 var import_unified = require("unified");
 
-// src/obsidian.vault.toLinkBuilder.ts
+// src/toLinkBuilder.ts
 var toLinkBuilder = ({ filePathAllowSet, toSlug: toSlug2, prefix }) => (wikiLink) => {
   const uriOpts = { toSlug: toSlug2, prefix };
   const obsidianLink = wikiToObsidian(wikiLink);

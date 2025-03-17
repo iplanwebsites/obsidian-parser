@@ -20,7 +20,7 @@ import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 import m from ".";
 import * as lib from "./lib";
-import { toLinkBuilder } from "./obsidian.vault.toLinkBuilder";
+import { toLinkBuilder } from "./toLinkBuilder";
 import { Metamark } from "./types";
 
 /**
