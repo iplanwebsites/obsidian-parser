@@ -4,7 +4,12 @@ import { Command } from "commander";
 import path from "path";
 import metamark from "../dist/index.js";
 
-import { processFolder } from "../dist/index.js";
+import {
+  processFolder,
+  jsonStringify,
+  writeToFileSync,
+  toSlug,
+} from "../dist/index.js";
 const program = new Command();
 
 program
@@ -32,13 +37,13 @@ try {
     assetPathPrefix: options.assetPrefix,
     imgLinkBuilderOpts: {
       prefix: options.assetPrefix,
-      toSlug: metamark.utility.toSlug,
+      toSlug: toSlug,
     },
   });
 
   // Convert to JSON and save
-  const jsonString = metamark.utility.jsonStringify(vaultData);
-  metamark.utility.writeToFileSync(outputPath, jsonString);
+  const jsonString = jsonStringify(vaultData);
+  writeToFileSync(outputPath, jsonString);
 
   console.log(`✨ Successfully processed ${vaultData.length} files`);
   console.log(`📝 Output saved to: ${outputPath}`);

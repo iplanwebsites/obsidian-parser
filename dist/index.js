@@ -13071,5 +13071,10 @@ var metamark = {
 var src_default = metamark;
 export {
   src_default as default,
-  processFolder
+  getFileName,
+  getFrontmatterAndMd,
+  jsonStringify,
+  processFolder,
+  toSlug,
+  writeToFileSync
 };

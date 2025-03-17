@@ -99,6 +99,17 @@ declare namespace Metamark {
  */
 declare function processFolder(dirPath: string, opts?: Metamark.Obsidian.Vault.ProcessOptions): Metamark.Obsidian.Vault.FileData[];
 
+declare function toSlug(s: string): string;
+declare function getFileName(filePath: string): string;
+declare function getFrontmatterAndMd(filePath: string): {
+    md: string;
+    frontmatter: {
+        [key: string]: any;
+    };
+};
+declare function jsonStringify(o: any): string;
+declare function writeToFileSync(filePath: string, content: string): void;
+
 declare const metamark: {
     processFolder: typeof processFolder;
     obsidian: {
@@ -120,4 +131,4 @@ declare const metamark: {
     };
 };
 
-export { Metamark, metamark as default, processFolder };
+export { Metamark, metamark as default, getFileName, getFrontmatterAndMd, jsonStringify, processFolder, toSlug, writeToFileSync };

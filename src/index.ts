@@ -3,6 +3,8 @@ import { processFolder } from "./processFolder";
 
 export * from "./types";
 
+export * from "./lib/utility"; ///export all utilities to top level
+
 const metamark = {
    processFolder, //obsidian-optimized method
 
@@ -20,7 +22,7 @@ const metamark = {
   },
 };
 
-export default metamark;
+export default metamark; //legacy export
 
 
 export { processFolder };
