@@ -13144,15 +13144,16 @@ function createLogger(level) {
 var import_node_fs3 = __toESM(require("fs"), 1);
 var import_node_path3 = __toESM(require("path"), 1);
 var import_sharp = __toESM(require("sharp"), 1);
+var import_ora = __toESM(require("ora"), 1);
 var DEFAULT_IMAGE_SIZES = [
   { width: 640, height: null, suffix: "sm" }
   // { width: 1024, height: null, suffix: "md" },
-  //{ width: 1920, height: null, suffix: "lg" },
-  //  { width: null, height: null, suffix: "original" } // Original size
+  // { width: 1920, height: null, suffix: "lg" },
+  // { width: null, height: null, suffix: "original" } // Original size
 ];
 var DEFAULT_IMAGE_FORMATS = [
   // { format: "webp", options: { quality: 80 } },
-  //  { format: "avif", options: { quality: 65 } },
+  // { format: "avif", options: { quality: 65 } },
   { format: "jpeg", options: { quality: 85, mozjpeg: true } }
 ];
 async function processMedia(dirPath, opts) {
@@ -13163,6 +13164,8 @@ async function processMedia(dirPath, opts) {
     optimizeImages: opts?.optimizeImages !== false,
     imageSizes: opts?.imageSizes || DEFAULT_IMAGE_SIZES,
     imageFormats: opts?.imageFormats || DEFAULT_IMAGE_FORMATS,
+    skipExisting: opts?.skipExisting || false,
+    // Default is false
     debug: opts?.debug || 0
   };
   const log = createLogger2(options.debug);
@@ -13175,10 +13178,23 @@ async function processMedia(dirPath, opts) {
   log(1, `\u{1F5BC}\uFE0F Found ${mediaFiles.length} media files to process`);
   const mediaData = [];
   const pathMap = {};
+  const spinner = (0, import_ora.default)("Processing media files...").start();
+  let lastUpdateTime = Date.now();
+  let processedCount = 0;
+  let skippedCount = 0;
+  const totalCount = mediaFiles.length;
   for (const [index, filePath] of mediaFiles.entries()) {
     try {
+      processedCount = index + 1;
+      const currentTime = Date.now();
+      if (currentTime - lastUpdateTime > 1e3 || processedCount === totalCount) {
+        spinner.text = `Processing media files: ${processedCount}/${totalCount} (${Math.round(processedCount / totalCount * 100)}%) - Skipped: ${skippedCount}`;
+        lastUpdateTime = currentTime;
+      }
       log(2, `\u2699\uFE0F Processing media file (${index + 1}/${mediaFiles.length}): ${filePath}`);
-      const mediaFile = await processMediaFile(filePath, dirPath, options, log);
+      const mediaFile = await processMediaFile(filePath, dirPath, options, log, (wasSkipped) => {
+        if (wasSkipped) skippedCount++;
+      });
       mediaData.push(mediaFile);
       const relativePath = import_node_path3.default.relative(dirPath, filePath).replace(/\\/g, "/");
       const bestPath = findBestOptimizedPath(mediaFile);
@@ -13190,7 +13206,7 @@ async function processMedia(dirPath, opts) {
       log(0, `\u274C Error processing media file ${filePath}: ${error}`);
     }
   }
-  log(1, `\u2705 Processed ${mediaData.length} media files successfully`);
+  spinner.succeed(`\u2705 Processed ${mediaData.length} media files successfully (${skippedCount} skipped)`);
   return { mediaData, pathMap };
 }
 function findBestOptimizedPath(mediaFile) {
@@ -13247,7 +13263,21 @@ function findMediaFiles(dirPath, log) {
   scanDirectory(dirPath);
   return mediaFiles;
 }
-async function processMediaFile(filePath, rootDir, options, log) {
+function shouldSkipFile(filePath, outputPath, options) {
+  if (!options.skipExisting) {
+    return false;
+  }
+  if (!import_node_fs3.default.existsSync(outputPath)) {
+    return false;
+  }
+  const sourceStats = import_node_fs3.default.statSync(filePath);
+  const outputStats = import_node_fs3.default.statSync(outputPath);
+  if (sourceStats.mtimeMs > outputStats.mtimeMs) {
+    return false;
+  }
+  return true;
+}
+async function processMediaFile(filePath, rootDir, options, log, onSkip) {
   const { base: fileName, ext: fileExt } = import_node_path3.default.parse(filePath);
   const relativePath = import_node_path3.default.relative(rootDir, filePath);
   const isImage = /\.(jpg|jpeg|png|webp|avif|gif)$/i.test(fileExt);
@@ -13289,6 +13319,21 @@ async function processMediaFile(filePath, rootDir, options, log) {
           const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${outputFileName}`.replace(/\\/g, "/");
           if (size.suffix === "original" && format.format !== mediaFile.metadata.format) {
             log(3, `\u23ED\uFE0F Skipping conversion for original size: ${fileName}`);
+            continue;
+          }
+          if (shouldSkipFile(filePath, outputPath, options)) {
+            log(2, `\u23ED\uFE0F Skipping existing file: ${outputFileName}`);
+            if (onSkip) onSkip(true);
+            const existingStats = import_node_fs3.default.statSync(outputPath);
+            const existingMetadata = await (0, import_sharp.default)(outputPath).metadata();
+            mediaFile.sizes[sizeName].push({
+              width: existingMetadata.width || 0,
+              height: existingMetadata.height || 0,
+              format: format.format,
+              outputPath,
+              publicPath,
+              size: existingStats.size
+            });
             continue;
           }
           let sharpInstance = (0, import_sharp.default)(filePath);
@@ -13346,7 +13391,13 @@ async function processMediaFile(filePath, rootDir, options, log) {
       log(3, `\u{1F4C1} Created directory: ${outputDir}`);
     }
     const outputPath = import_node_path3.default.join(outputDir, fileName);
-    import_node_fs3.default.copyFileSync(filePath, outputPath);
+    if (shouldSkipFile(filePath, outputPath, options)) {
+      log(2, `\u23ED\uFE0F Skipping existing file: ${fileName}`);
+      if (onSkip) onSkip(true);
+    } else {
+      import_node_fs3.default.copyFileSync(filePath, outputPath);
+      log(2, `\u{1F4CB} Copied: ${outputPath} (${formatBytes(stats.size)})`);
+    }
     const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${fileName}`.replace(/\\/g, "/");
     mediaFile.sizes.original = [{
       width: 0,
@@ -13356,7 +13407,6 @@ async function processMediaFile(filePath, rootDir, options, log) {
       publicPath,
       size: stats.size
     }];
-    log(2, `\u{1F4CB} Copied: ${publicPath} (${formatBytes(stats.size)})`);
   }
   return mediaFile;
 }

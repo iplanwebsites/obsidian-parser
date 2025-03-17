@@ -13107,15 +13107,16 @@ function createLogger(level) {
 import fs3 from "node:fs";
 import path3 from "node:path";
 import sharp from "sharp";
+import ora from "ora";
 var DEFAULT_IMAGE_SIZES = [
   { width: 640, height: null, suffix: "sm" }
   // { width: 1024, height: null, suffix: "md" },
-  //{ width: 1920, height: null, suffix: "lg" },
-  //  { width: null, height: null, suffix: "original" } // Original size
+  // { width: 1920, height: null, suffix: "lg" },
+  // { width: null, height: null, suffix: "original" } // Original size
 ];
 var DEFAULT_IMAGE_FORMATS = [
   // { format: "webp", options: { quality: 80 } },
-  //  { format: "avif", options: { quality: 65 } },
+  // { format: "avif", options: { quality: 65 } },
   { format: "jpeg", options: { quality: 85, mozjpeg: true } }
 ];
 async function processMedia(dirPath, opts) {
@@ -13126,6 +13127,8 @@ async function processMedia(dirPath, opts) {
     optimizeImages: opts?.optimizeImages !== false,
     imageSizes: opts?.imageSizes || DEFAULT_IMAGE_SIZES,
     imageFormats: opts?.imageFormats || DEFAULT_IMAGE_FORMATS,
+    skipExisting: opts?.skipExisting || false,
+    // Default is false
     debug: opts?.debug || 0
   };
   const log = createLogger2(options.debug);
@@ -13138,10 +13141,23 @@ async function processMedia(dirPath, opts) {
   log(1, `\u{1F5BC}\uFE0F Found ${mediaFiles.length} media files to process`);
   const mediaData = [];
   const pathMap = {};
+  const spinner = ora("Processing media files...").start();
+  let lastUpdateTime = Date.now();
+  let processedCount = 0;
+  let skippedCount = 0;
+  const totalCount = mediaFiles.length;
   for (const [index, filePath] of mediaFiles.entries()) {
     try {
+      processedCount = index + 1;
+      const currentTime = Date.now();
+      if (currentTime - lastUpdateTime > 1e3 || processedCount === totalCount) {
+        spinner.text = `Processing media files: ${processedCount}/${totalCount} (${Math.round(processedCount / totalCount * 100)}%) - Skipped: ${skippedCount}`;
+        lastUpdateTime = currentTime;
+      }
       log(2, `\u2699\uFE0F Processing media file (${index + 1}/${mediaFiles.length}): ${filePath}`);
-      const mediaFile = await processMediaFile(filePath, dirPath, options, log);
+      const mediaFile = await processMediaFile(filePath, dirPath, options, log, (wasSkipped) => {
+        if (wasSkipped) skippedCount++;
+      });
       mediaData.push(mediaFile);
       const relativePath = path3.relative(dirPath, filePath).replace(/\\/g, "/");
       const bestPath = findBestOptimizedPath(mediaFile);
@@ -13153,7 +13169,7 @@ async function processMedia(dirPath, opts) {
       log(0, `\u274C Error processing media file ${filePath}: ${error}`);
     }
   }
-  log(1, `\u2705 Processed ${mediaData.length} media files successfully`);
+  spinner.succeed(`\u2705 Processed ${mediaData.length} media files successfully (${skippedCount} skipped)`);
   return { mediaData, pathMap };
 }
 function findBestOptimizedPath(mediaFile) {
@@ -13210,7 +13226,21 @@ function findMediaFiles(dirPath, log) {
   scanDirectory(dirPath);
   return mediaFiles;
 }
-async function processMediaFile(filePath, rootDir, options, log) {
+function shouldSkipFile(filePath, outputPath, options) {
+  if (!options.skipExisting) {
+    return false;
+  }
+  if (!fs3.existsSync(outputPath)) {
+    return false;
+  }
+  const sourceStats = fs3.statSync(filePath);
+  const outputStats = fs3.statSync(outputPath);
+  if (sourceStats.mtimeMs > outputStats.mtimeMs) {
+    return false;
+  }
+  return true;
+}
+async function processMediaFile(filePath, rootDir, options, log, onSkip) {
   const { base: fileName, ext: fileExt } = path3.parse(filePath);
   const relativePath = path3.relative(rootDir, filePath);
   const isImage = /\.(jpg|jpeg|png|webp|avif|gif)$/i.test(fileExt);
@@ -13252,6 +13282,21 @@ async function processMediaFile(filePath, rootDir, options, log) {
           const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${outputFileName}`.replace(/\\/g, "/");
           if (size.suffix === "original" && format.format !== mediaFile.metadata.format) {
             log(3, `\u23ED\uFE0F Skipping conversion for original size: ${fileName}`);
+            continue;
+          }
+          if (shouldSkipFile(filePath, outputPath, options)) {
+            log(2, `\u23ED\uFE0F Skipping existing file: ${outputFileName}`);
+            if (onSkip) onSkip(true);
+            const existingStats = fs3.statSync(outputPath);
+            const existingMetadata = await sharp(outputPath).metadata();
+            mediaFile.sizes[sizeName].push({
+              width: existingMetadata.width || 0,
+              height: existingMetadata.height || 0,
+              format: format.format,
+              outputPath,
+              publicPath,
+              size: existingStats.size
+            });
             continue;
           }
           let sharpInstance = sharp(filePath);
@@ -13309,7 +13354,13 @@ async function processMediaFile(filePath, rootDir, options, log) {
       log(3, `\u{1F4C1} Created directory: ${outputDir}`);
     }
     const outputPath = path3.join(outputDir, fileName);
-    fs3.copyFileSync(filePath, outputPath);
+    if (shouldSkipFile(filePath, outputPath, options)) {
+      log(2, `\u23ED\uFE0F Skipping existing file: ${fileName}`);
+      if (onSkip) onSkip(true);
+    } else {
+      fs3.copyFileSync(filePath, outputPath);
+      log(2, `\u{1F4CB} Copied: ${outputPath} (${formatBytes(stats.size)})`);
+    }
     const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${fileName}`.replace(/\\/g, "/");
     mediaFile.sizes.original = [{
       width: 0,
@@ -13319,7 +13370,6 @@ async function processMediaFile(filePath, rootDir, options, log) {
       publicPath,
       size: stats.size
     }];
-    log(2, `\u{1F4CB} Copied: ${publicPath} (${formatBytes(stats.size)})`);
   }
   return mediaFile;
 }

@@ -136,6 +136,7 @@ interface ProcessMediaOptions {
         format: string;
         options: any;
     }>;
+    skipExisting?: boolean;
     debug?: number;
 }
 /**

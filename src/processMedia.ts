@@ -1,23 +1,24 @@
 import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp"; 
+import ora from "ora";  // New import for the spinner
 
 /**
  * Default image sizes for optimization
  */
 const DEFAULT_IMAGE_SIZES = [
   { width: 640, height: null, suffix: "sm" },
- // { width: 1024, height: null, suffix: "md" },
- //{ width: 1920, height: null, suffix: "lg" },
-//  { width: null, height: null, suffix: "original" } // Original size
+  // { width: 1024, height: null, suffix: "md" },
+  // { width: 1920, height: null, suffix: "lg" },
+  // { width: null, height: null, suffix: "original" } // Original size
 ];
 
 /**
  * Default image formats for optimization
  */
 const DEFAULT_IMAGE_FORMATS = [
- // { format: "webp", options: { quality: 80 } },
-//  { format: "avif", options: { quality: 65 } },
+  // { format: "webp", options: { quality: 80 } },
+  // { format: "avif", options: { quality: 65 } },
   { format: "jpeg", options: { quality: 85, mozjpeg: true } }
 ];
 
@@ -57,6 +58,7 @@ export interface ProcessMediaOptions {
   optimizeImages?: boolean;
   imageSizes?: Array<{ width: number | null; height: number | null; suffix: string }>;
   imageFormats?: Array<{ format: string; options: any }>;
+  skipExisting?: boolean; // New option to skip existing files
   debug?: number;
 }
 
@@ -88,6 +90,7 @@ export async function processMedia(
     optimizeImages: opts?.optimizeImages !== false,
     imageSizes: opts?.imageSizes || DEFAULT_IMAGE_SIZES,
     imageFormats: opts?.imageFormats || DEFAULT_IMAGE_FORMATS,
+    skipExisting: opts?.skipExisting || false, // Default is false
     debug: opts?.debug || 0
   };
 
@@ -108,12 +111,31 @@ export async function processMedia(
 
   const mediaData: MediaFileData[] = [];
   const pathMap: MediaPathMap = {};
+  
+  // Create a progress spinner for better visual feedback
+  const spinner = ora('Processing media files...').start();
+  let lastUpdateTime = Date.now();
+  let processedCount = 0;
+  let skippedCount = 0;
+  const totalCount = mediaFiles.length;
 
   // Process each media file
   for (const [index, filePath] of mediaFiles.entries()) {
     try {
+      processedCount = index + 1;
+      
+      // Update the spinner text approximately every second
+      const currentTime = Date.now();
+      if (currentTime - lastUpdateTime > 1000 || processedCount === totalCount) {
+        spinner.text = `Processing media files: ${processedCount}/${totalCount} (${Math.round(processedCount/totalCount*100)}%) - Skipped: ${skippedCount}`;
+        lastUpdateTime = currentTime;
+      }
+      
       log(2, `⚙️ Processing media file (${index+1}/${mediaFiles.length}): ${filePath}`);
-      const mediaFile = await processMediaFile(filePath, dirPath, options, log);
+      const mediaFile = await processMediaFile(filePath, dirPath, options, log, (wasSkipped) => {
+        if (wasSkipped) skippedCount++;
+      });
+      
       mediaData.push(mediaFile);
 
       // Add to path map, preferring webp format and medium size if available
@@ -128,14 +150,15 @@ export async function processMedia(
     }
   }
 
-  log(1, `✅ Processed ${mediaData.length} media files successfully`);
+  // Complete the progress spinner
+  spinner.succeed(`✅ Processed ${mediaData.length} media files successfully (${skippedCount} skipped)`);
+
   return { mediaData, pathMap };
 }
 
 /**
  * Find the best optimized path for a media file
  * Prefers: webp > avif > jpeg > original
- * Sizes: md > sm > lg > original
  */
 function findBestOptimizedPath(mediaFile: MediaFileData): string | null {
   // Preferred size order: md, sm, lg, original
@@ -206,18 +229,53 @@ function findMediaFiles(dirPath: string, log: (level: number, message: string) =
 }
 
 /**
+ * Check if a file should be skipped based on existing outputs
+ * @param filePath Original file path
+ * @param outputPath Output file path
+ * @param options Processing options
+ * @returns Boolean indicating if file should be skipped
+ */
+function shouldSkipFile(
+  filePath: string,
+  outputPath: string,
+  options: Required<ProcessMediaOptions>
+): boolean {
+  if (!options.skipExisting) {
+    return false;
+  }
+  
+  // Check if output file exists
+  if (!fs.existsSync(outputPath)) {
+    return false;
+  }
+  
+  // Check if source file is newer than output file
+  const sourceStats = fs.statSync(filePath);
+  const outputStats = fs.statSync(outputPath);
+  
+  // If source is newer, we shouldn't skip
+  if (sourceStats.mtimeMs > outputStats.mtimeMs) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * Process a single media file
  * @param filePath Path to the media file
  * @param rootDir Root directory path
  * @param options Processing options
  * @param log Logging function
+ * @param onSkip Callback when a file is skipped
  * @returns Media file data
  */
 async function processMediaFile(
   filePath: string,
   rootDir: string,
   options: Required<ProcessMediaOptions>,
-  log: (level: number, message: string) => void
+  log: (level: number, message: string) => void,
+  onSkip?: (skipped: boolean) => void
 ): Promise<MediaFileData> {
   const { base: fileName, ext: fileExt } = path.parse(filePath);
   const relativePath = path.relative(rootDir, filePath);
@@ -278,6 +336,28 @@ async function processMediaFile(
           // Skip original size for non-original format
           if (size.suffix === 'original' && format.format !== mediaFile.metadata.format) {
             log(3, `⏭️ Skipping conversion for original size: ${fileName}`);
+            continue;
+          }
+
+          // Check if we should skip processing this file
+          if (shouldSkipFile(filePath, outputPath, options)) {
+            log(2, `⏭️ Skipping existing file: ${outputFileName}`);
+            if (onSkip) onSkip(true);
+            
+            // Get stats of the existing file
+            const existingStats = fs.statSync(outputPath);
+            const existingMetadata = await sharp(outputPath).metadata();
+            
+            // Add to sizes array
+            mediaFile.sizes[sizeName].push({
+              width: existingMetadata.width || 0,
+              height: existingMetadata.height || 0,
+              format: format.format,
+              outputPath,
+              publicPath,
+              size: existingStats.size
+            });
+            
             continue;
           }
 
@@ -355,7 +435,15 @@ async function processMediaFile(
     }
 
     const outputPath = path.join(outputDir, fileName);
-    fs.copyFileSync(filePath, outputPath);
+    
+    // Check if we should skip copying this file
+    if (shouldSkipFile(filePath, outputPath, options)) {
+      log(2, `⏭️ Skipping existing file: ${fileName}`);
+      if (onSkip) onSkip(true);
+    } else {
+      fs.copyFileSync(filePath, outputPath);
+      log(2, `📋 Copied: ${outputPath} (${formatBytes(stats.size)})`);
+    }
     
     const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${fileName}`.replace(/\\/g, '/');
     
@@ -367,8 +455,6 @@ async function processMediaFile(
       publicPath,
       size: stats.size
     }];
-
-    log(2, `📋 Copied: ${publicPath} (${formatBytes(stats.size)})`);
   }
 
   return mediaFile;
