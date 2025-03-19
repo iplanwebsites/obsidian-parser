@@ -8,9 +8,9 @@ import ora from "ora";  // New import for the spinner
  */
 const DEFAULT_IMAGE_SIZES = [
   { width: 640, height: null, suffix: "sm" },
-  // { width: 1024, height: null, suffix: "md" },
-  // { width: 1920, height: null, suffix: "lg" },
-  // { width: null, height: null, suffix: "original" } // Original size
+   { width: 1024, height: null, suffix: "md" },
+   { width: 1920, height: null, suffix: "lg" },
+  // { width: null, height: null, suffix: "ori" } // Original size
 ];
 
 /**

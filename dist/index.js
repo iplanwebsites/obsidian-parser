@@ -13109,10 +13109,10 @@ import path3 from "node:path";
 import sharp from "sharp";
 import ora from "ora";
 var DEFAULT_IMAGE_SIZES = [
-  { width: 640, height: null, suffix: "sm" }
-  // { width: 1024, height: null, suffix: "md" },
-  // { width: 1920, height: null, suffix: "lg" },
-  // { width: null, height: null, suffix: "original" } // Original size
+  { width: 640, height: null, suffix: "sm" },
+  { width: 1024, height: null, suffix: "md" },
+  { width: 1920, height: null, suffix: "lg" }
+  // { width: null, height: null, suffix: "ori" } // Original size
 ];
 var DEFAULT_IMAGE_FORMATS = [
   // { format: "webp", options: { quality: 80 } },

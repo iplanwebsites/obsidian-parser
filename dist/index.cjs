@@ -13146,10 +13146,10 @@ var import_node_path3 = __toESM(require("path"), 1);
 var import_sharp = __toESM(require("sharp"), 1);
 var import_ora = __toESM(require("ora"), 1);
 var DEFAULT_IMAGE_SIZES = [
-  { width: 640, height: null, suffix: "sm" }
-  // { width: 1024, height: null, suffix: "md" },
-  // { width: 1920, height: null, suffix: "lg" },
-  // { width: null, height: null, suffix: "original" } // Original size
+  { width: 640, height: null, suffix: "sm" },
+  { width: 1024, height: null, suffix: "md" },
+  { width: 1920, height: null, suffix: "lg" }
+  // { width: null, height: null, suffix: "ori" } // Original size
 ];
 var DEFAULT_IMAGE_FORMATS = [
   // { format: "webp", options: { quality: 80 } },
