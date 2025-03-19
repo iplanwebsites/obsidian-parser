@@ -109,6 +109,7 @@ interface MediaFileData {
             format: string;
             outputPath: string;
             publicPath: string;
+            absolutePublicPath?: string;
             size: number;
         }[];
     };
@@ -137,6 +138,7 @@ interface ProcessMediaOptions {
         options: any;
     }>;
     skipExisting?: boolean;
+    domain?: string;
     debug?: number;
 }
 /**

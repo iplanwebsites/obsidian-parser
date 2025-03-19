@@ -1,7 +1,25 @@
+//  src/processMedia.ts
+
 import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp"; 
 import ora from "ora";  // New import for the spinner
+
+/**
+ * Helper function to create properly typed options with defaults
+ */
+function createProcessMediaOptions(opts?: ProcessMediaOptions) {
+  return {
+    mediaOutputFolder: opts?.mediaOutputFolder || path.join(process.cwd(), "public/media"),
+    mediaPathPrefix: opts?.mediaPathPrefix || "/media",
+    optimizeImages: opts?.optimizeImages !== false,
+    imageSizes: opts?.imageSizes || DEFAULT_IMAGE_SIZES,
+    imageFormats: opts?.imageFormats || DEFAULT_IMAGE_FORMATS,
+    skipExisting: opts?.skipExisting || false, // Default is false
+    domain: opts?.domain, // This can be undefined
+    debug: opts?.debug || 0
+  };
+}
 
 /**
  * Default image sizes for optimization
@@ -37,6 +55,7 @@ export interface MediaFileData {
       format: string;
       outputPath: string;
       publicPath: string;
+      absolutePublicPath?: string; // New property for absolute URL with domain
       size: number; // File size in bytes
     }[];
   };
@@ -59,6 +78,7 @@ export interface ProcessMediaOptions {
   imageSizes?: Array<{ width: number | null; height: number | null; suffix: string }>;
   imageFormats?: Array<{ format: string; options: any }>;
   skipExisting?: boolean; // New option to skip existing files
+  domain?: string; // New option for domain to create absolute URLs
   debug?: number;
 }
 
@@ -84,16 +104,9 @@ export async function processMedia(
   dirPath = path.normalize(dirPath);
 
   // Set default options
-  const options: Required<ProcessMediaOptions> = {
-    mediaOutputFolder: opts?.mediaOutputFolder || path.join(process.cwd(), "public/media"),
-    mediaPathPrefix: opts?.mediaPathPrefix || "/media",
-    optimizeImages: opts?.optimizeImages !== false,
-    imageSizes: opts?.imageSizes || DEFAULT_IMAGE_SIZES,
-    imageFormats: opts?.imageFormats || DEFAULT_IMAGE_FORMATS,
-    skipExisting: opts?.skipExisting || false, // Default is false
-    debug: opts?.debug || 0
-  };
+  const options = createProcessMediaOptions(opts);
 
+ 
   // Create logging function based on debug level
   const log = createLogger(options.debug);
 
@@ -238,7 +251,7 @@ function findMediaFiles(dirPath: string, log: (level: number, message: string) =
 function shouldSkipFile(
   filePath: string,
   outputPath: string,
-  options: Required<ProcessMediaOptions>
+  options: ReturnType<typeof createProcessMediaOptions>
 ): boolean {
   if (!options.skipExisting) {
     return false;
@@ -273,7 +286,7 @@ function shouldSkipFile(
 async function processMediaFile(
   filePath: string,
   rootDir: string,
-  options: Required<ProcessMediaOptions>,
+  options: ReturnType<typeof createProcessMediaOptions>,
   log: (level: number, message: string) => void,
   onSkip?: (skipped: boolean) => void
 ): Promise<MediaFileData> {
@@ -332,6 +345,11 @@ async function processMediaFile(
           const outputFileName = `${path.parse(fileName).name}${size.suffix !== 'original' ? `-${size.suffix}` : ''}.${format.format}`;
           const outputPath = path.join(outputDir, outputFileName);
           const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${outputFileName}`.replace(/\\/g, '/');
+          
+          // Create absolute public path if domain is specified
+          const absolutePublicPath = options.domain 
+            ? `${options.domain.replace(/\/+$/, '')}${publicPath}`
+            : undefined;
 
           // Skip original size for non-original format
           if (size.suffix === 'original' && format.format !== mediaFile.metadata.format) {
@@ -355,6 +373,7 @@ async function processMediaFile(
               format: format.format,
               outputPath,
               publicPath,
+              absolutePublicPath, // Add absolute public path
               size: existingStats.size
             });
             
@@ -400,6 +419,7 @@ async function processMediaFile(
             format: format.format,
             outputPath,
             publicPath,
+            absolutePublicPath, // Add absolute public path
             size: processedStats.size
           });
 
@@ -407,6 +427,9 @@ async function processMediaFile(
             ((stats.size - processedStats.size) / stats.size * 100).toFixed(1) : 0;
           
           log(2, `💾 Saved: ${publicPath} (${formatBytes(processedStats.size)}, ${compressionRatio}% smaller)`);
+          if (absolutePublicPath) {
+            log(3, `🌐 Absolute URL: ${absolutePublicPath}`);
+          }
         }
       }
     } catch (error) {
@@ -414,6 +437,9 @@ async function processMediaFile(
       // For failed image optimization, still include the original file
       const dirStructure = path.dirname(relativePath);
       const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${fileName}`.replace(/\\/g, '/');
+      const absolutePublicPath = options.domain 
+        ? `${options.domain.replace(/\/+$/, '')}${publicPath}`
+        : undefined;
       
       mediaFile.sizes.original = [{
         width: mediaFile.metadata.width || 0,
@@ -421,6 +447,7 @@ async function processMediaFile(
         format: mediaFile.fileExt,
         outputPath: filePath,
         publicPath,
+        absolutePublicPath, // Add absolute public path
         size: stats.size
       }];
     }
@@ -446,6 +473,9 @@ async function processMediaFile(
     }
     
     const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${fileName}`.replace(/\\/g, '/');
+    const absolutePublicPath = options.domain 
+      ? `${options.domain.replace(/\/+$/, '')}${publicPath}`
+      : undefined;
     
     mediaFile.sizes.original = [{
       width: 0,
@@ -453,6 +483,7 @@ async function processMediaFile(
       format: mediaFile.fileExt,
       outputPath,
       publicPath,
+      absolutePublicPath, // Add absolute public path
       size: stats.size
     }];
   }

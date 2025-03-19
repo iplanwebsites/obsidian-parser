@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+// CLI.js
 import { Command } from "commander";
 import path from "path";
 import fs from "node:fs";
@@ -29,6 +30,7 @@ program
   .option("--optimize-images", "Optimize images", true)
   .option("--skip-media", "Skip media processing", false)
   .option("--skip-existing", "Skip processing existing media files", false)
+  .option("--domain <url>", "Domain for absolute public paths")
   .option(
     "--media-results <path>",
     "Save media processing results to a JSON file",
@@ -60,6 +62,9 @@ const options = program.opts();
     if (options.skipExisting) {
       console.log(`⏭️ Skip existing files: Enabled`);
     }
+    if (options.domain) {
+      console.log(`🌐 Domain for absolute paths: ${options.domain}`);
+    }
 
     // Process media files first if not skipped
     let mediaData = [];
@@ -73,6 +78,7 @@ const options = program.opts();
         mediaPathPrefix: options.mediaPrefix,
         optimizeImages: options.optimizeImages,
         skipExisting: options.skipExisting,
+        domain: options.domain, // Pass domain to processMedia
         debug: debugLevel,
       });
 
@@ -100,6 +106,7 @@ const options = program.opts();
       debug: debugLevel,
       notePathPrefix: options.notePrefix,
       assetPathPrefix: options.assetPrefix,
+      domain: options.domain, // Pass domain to processFolder
       imgLinkBuilderOpts: {
         prefix: options.assetPrefix,
         toSlug: toSlug,
@@ -128,3 +135,4 @@ const options = program.opts();
 // npm run convert -- -i test/testVault -o testOutput.json --skip-media
 // npm run convert -- -i test/testVault -o testOutput.json --skip-existing
 // npm run convert -- -i test/testVault -o testOutput.json --media-results media-data.json
+// npm run convert -- -i test/testVault -o testOutput.json --domain https://example.com
