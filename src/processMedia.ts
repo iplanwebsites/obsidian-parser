@@ -1,4 +1,4 @@
-//  src/processMedia.ts
+//  processMedia.ts
 
 import fs from "node:fs";
 import path from "node:path";

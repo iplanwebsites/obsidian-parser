@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// CLI.js
+// cli.js
 import { Command } from "commander";
 import path from "path";
 import fs from "node:fs";

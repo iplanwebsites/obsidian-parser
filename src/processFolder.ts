@@ -1,3 +1,5 @@
+// processFolder.ts
+
 import slugify from "@sindresorhus/slugify";
 import matter from "gray-matter";
 import elixir from "highlight.js/lib/languages/elixir";
