@@ -53,9 +53,8 @@
     "remark-obsidian-link": "^0.2.4",
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.0",
-    "remark-wiki-link-plus": "^1.1.1", 
+    "remark-wiki-link-plus": "^1.1.1",
     "remark-youtube": "github:iplanwebsites/remark-youtube#master",
-    
     "sharp": "^0.33.5",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.0.0"

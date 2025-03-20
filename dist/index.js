@@ -12852,6 +12852,7 @@ import remarkMath from "remark-math";
 import { remarkObsidianLink } from "remark-obsidian-link";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
+import remarkImages from "remark-images";
 import { unified } from "unified";
 import remarkYoutube from "remark-youtube";
 
@@ -13199,7 +13200,7 @@ function buildMarkdownProcessor({
   useAbsolutePaths = false,
   preferredSize = "md"
 }) {
-  return unified().use(remarkParse).use(remarkGfm).use(remarkObsidianLink, { toLink }).use(remarkObsidianMedia, {
+  return unified().use(remarkParse).use(remarkImages, { link: false }).use(remarkGfm).use(remarkObsidianLink, { toLink }).use(remarkObsidianMedia, {
     mediaData,
     mediaPathMap,
     useAbsolutePaths,

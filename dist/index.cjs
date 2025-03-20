@@ -12889,6 +12889,7 @@ var import_remark_math = __toESM(require("remark-math"), 1);
 var import_remark_obsidian_link = require("remark-obsidian-link");
 var import_remark_parse = __toESM(require("remark-parse"), 1);
 var import_remark_rehype = __toESM(require("remark-rehype"), 1);
+var import_remark_images = __toESM(require("remark-images"), 1);
 var import_unified = require("unified");
 var import_remark_youtube = __toESM(require("remark-youtube"), 1);
 
@@ -13236,7 +13237,7 @@ function buildMarkdownProcessor({
   useAbsolutePaths = false,
   preferredSize = "md"
 }) {
-  return (0, import_unified.unified)().use(import_remark_parse.default).use(import_remark_gfm.default).use(import_remark_obsidian_link.remarkObsidianLink, { toLink }).use(remarkObsidianMedia, {
+  return (0, import_unified.unified)().use(import_remark_parse.default).use(import_remark_images.default, { link: false }).use(import_remark_gfm.default).use(import_remark_obsidian_link.remarkObsidianLink, { toLink }).use(remarkObsidianMedia, {
     mediaData,
     mediaPathMap,
     useAbsolutePaths,

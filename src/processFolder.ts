@@ -19,6 +19,7 @@ import remarkMath from "remark-math";
 import { remarkObsidianLink } from "remark-obsidian-link";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
+import remarkImages from 'remark-images'
 
 import { unified } from "unified";
 
@@ -201,6 +202,9 @@ function buildMarkdownProcessor({
 }) {
   return unified()
     .use(remarkParse)
+   .use(remarkImages, { link:false  }) 
+   // Link false option isn't working. weird...
+   // https://github.com/remarkjs/remark-images
     .use(remarkGfm)
     .use(remarkObsidianLink, { toLink })
     .use(remarkObsidianMedia, { 
