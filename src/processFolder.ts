@@ -41,6 +41,7 @@ declare module "./types" {
   namespace Metamark {
     namespace Obsidian {
       namespace Vault {
+     
         interface ProcessOptions {
           // Make sure debug is explicitly declared
           debug?: number;
