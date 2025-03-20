@@ -17,10 +17,18 @@ import remarkCallouts from "remark-callouts";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { remarkObsidianLink } from "remark-obsidian-link";
-import { remarkObsidianMedia } from "./remarkObsidianMedia"; // Import our media plugin
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
+
 import { unified } from "unified";
+
+
+import remarkYoutube from 'remark-youtube';
+// import remarkYoutube from '../../remark-youtube' /// for dev...
+ // https://github.com/iplanwebsites/remark-youtube
+//"remark-youtube": "github:iplanwebsites/remark-youtube#main",
+
+import { remarkObsidianMedia } from "./remarkObsidianMedia"; // Import our media plugin
 import m from ".";
 import * as lib from "./lib";
 import { toLinkBuilder } from "./toLinkBuilder"; // Import just the function
@@ -201,6 +209,7 @@ function buildMarkdownProcessor({
       useAbsolutePaths,
       preferredSize
     })
+    .use(remarkYoutube, {noHardcodedSize:true}) //, { width: '100%', height: '100%' })
     .use(remarkCallouts)
     .use(remarkMath)
     .use(remarkRehype)

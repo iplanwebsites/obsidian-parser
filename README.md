@@ -35,6 +35,7 @@ Obsidian Parser can:
 - [ ] Backlink computation (enabled by extracting internal-links on all notes first)
 - [ ] Note graph extraction (including backlinks for files and resources)
 - [ ] Youtube embeds (just paste a youtube link)
+- [ ] Export individual articles slug.json for simple static API hosting and a lightweight list.json.
 - [ ] Parametric config to enable/disable different modules, and pass options to processing module.
 - [ ] Good documentaiton
   - [x] Basi feature roadmap

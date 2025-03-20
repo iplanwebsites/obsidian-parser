@@ -12887,6 +12887,10 @@ var import_remark_callouts = __toESM(require("remark-callouts"), 1);
 var import_remark_gfm = __toESM(require("remark-gfm"), 1);
 var import_remark_math = __toESM(require("remark-math"), 1);
 var import_remark_obsidian_link = require("remark-obsidian-link");
+var import_remark_parse = __toESM(require("remark-parse"), 1);
+var import_remark_rehype = __toESM(require("remark-rehype"), 1);
+var import_unified = require("unified");
+var import_remark_youtube = __toESM(require("remark-youtube"), 1);
 
 // src/remarkObsidianMedia.ts
 var import_unist_util_visit2 = require("unist-util-visit");
@@ -13026,11 +13030,6 @@ var remarkObsidianMedia = (options = {}) => {
     };
   }
 };
-
-// src/processFolder.ts
-var import_remark_parse = __toESM(require("remark-parse"), 1);
-var import_remark_rehype = __toESM(require("remark-rehype"), 1);
-var import_unified = require("unified");
 
 // src/toLinkBuilder.ts
 var toLinkBuilder = ({ filePathAllowSet, toSlug: toSlug2, prefix }) => (wikiLink) => {
@@ -13242,7 +13241,7 @@ function buildMarkdownProcessor({
     mediaPathMap,
     useAbsolutePaths,
     preferredSize
-  }).use(import_remark_callouts.default).use(import_remark_math.default).use(import_remark_rehype.default).use(import_rehype_external_links.default).use(import_rehype_slug.default).use(import_rehype_autolink_headings.default, { behavior: "wrap" }).use(import_rehype_highlight.default, {
+  }).use(import_remark_youtube.default, { noHardcodedSize: true }).use(import_remark_callouts.default).use(import_remark_math.default).use(import_remark_rehype.default).use(import_rehype_external_links.default).use(import_rehype_slug.default).use(import_rehype_autolink_headings.default, { behavior: "wrap" }).use(import_rehype_highlight.default, {
     languages: { ...grammars, elixir }
   }).use(import_chtml.default, {
     chtml: {

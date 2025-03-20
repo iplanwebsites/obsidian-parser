@@ -12850,6 +12850,10 @@ import remarkCallouts from "remark-callouts";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { remarkObsidianLink } from "remark-obsidian-link";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
+import { unified } from "unified";
+import remarkYoutube from "remark-youtube";
 
 // src/remarkObsidianMedia.ts
 import { visit as visit2 } from "unist-util-visit";
@@ -12989,11 +12993,6 @@ var remarkObsidianMedia = (options = {}) => {
     };
   }
 };
-
-// src/processFolder.ts
-import remarkParse from "remark-parse";
-import remarkRehype from "remark-rehype";
-import { unified } from "unified";
 
 // src/toLinkBuilder.ts
 var toLinkBuilder = ({ filePathAllowSet, toSlug: toSlug2, prefix }) => (wikiLink) => {
@@ -13205,7 +13204,7 @@ function buildMarkdownProcessor({
     mediaPathMap,
     useAbsolutePaths,
     preferredSize
-  }).use(remarkCallouts).use(remarkMath).use(remarkRehype).use(rehypeExternalLinks).use(rehypeSlug).use(rehypeAutolinkHeadings, { behavior: "wrap" }).use(rehypeHighlight, {
+  }).use(remarkYoutube, { noHardcodedSize: true }).use(remarkCallouts).use(remarkMath).use(remarkRehype).use(rehypeExternalLinks).use(rehypeSlug).use(rehypeAutolinkHeadings, { behavior: "wrap" }).use(rehypeHighlight, {
     languages: { ...grammars, elixir }
   }).use(rehypeMathjaxChtml, {
     chtml: {
