@@ -13639,7 +13639,7 @@ function formatBytes(bytes) {
 }
 
 // src/index.ts
-var metamark = {
+var MAIN = {
   ...utility_exports,
   processFolder,
   processMedia,
@@ -13653,7 +13653,7 @@ var metamark = {
     ...utility_exports
   }
 };
-var src_default = metamark;
+var src_default = MAIN;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   getFileName,

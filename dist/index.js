@@ -13602,7 +13602,7 @@ function formatBytes(bytes) {
 }
 
 // src/index.ts
-var metamark = {
+var MAIN = {
   ...utility_exports,
   processFolder,
   processMedia,
@@ -13616,7 +13616,7 @@ var metamark = {
     ...utility_exports
   }
 };
-var src_default = metamark;
+var src_default = MAIN;
 export {
   src_default as default,
   getFileName,

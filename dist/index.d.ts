@@ -198,7 +198,7 @@ declare function getFrontmatterAndMd(filePath: string): {
 declare function jsonStringify(o: any): string;
 declare function writeToFileSync(filePath: string, content: string): void;
 
-declare const metamark: {
+declare const MAIN: {
     processFolder: typeof processFolder;
     processMedia: typeof processMedia;
     obsidian: {
@@ -231,4 +231,4 @@ declare const metamark: {
     writeToFileSync(filePath: string, content: string): void;
 };
 
-export { type MediaFileData, type MediaPathMap, Metamark, type ProcessMediaOptions, metamark as default, getFileName, getFrontmatterAndMd, jsonStringify, processFolder, processMedia, toSlug, writeToFileSync };
+export { type MediaFileData, type MediaPathMap, Metamark, type ProcessMediaOptions, MAIN as default, getFileName, getFrontmatterAndMd, jsonStringify, processFolder, processMedia, toSlug, writeToFileSync };

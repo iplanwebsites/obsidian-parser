@@ -7,14 +7,16 @@ export * from "./lib/utility"; // Export all utilities to top level
 
 // Export the new media processing functionality
 export { 
+  processFolder,
   processMedia,
   type MediaFileData,
   type MediaPathMap,
   type ProcessMediaOptions 
 };
+ 
 
 // LEGACY export structure (metamark):
-const metamark = {
+const MAIN = {
   ...lib.utility,
   processFolder,
   processMedia,
@@ -30,6 +32,5 @@ const metamark = {
   },
 };
 
-export default metamark; // Legacy export
+export default MAIN; // Legacy export
 
-export { processFolder };
