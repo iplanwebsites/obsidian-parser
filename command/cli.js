@@ -31,6 +31,12 @@ program
   .option("--skip-media", "Skip media processing", false)
   .option("--skip-existing", "Skip processing existing media files", false)
   .option("--domain <url>", "Domain for absolute public paths")
+  // in cli.js
+  .option(
+    "--use-absolute-paths",
+    "Use absolute paths with domain for media replacements in articles",
+    true
+  )
   .option(
     "--media-results <path>",
     "Save media processing results to a JSON file",
@@ -106,13 +112,14 @@ const options = program.opts();
       debug: debugLevel,
       notePathPrefix: options.notePrefix,
       assetPathPrefix: options.assetPrefix,
-      domain: options.domain, // Pass domain to processFolder
+      domain: options.domain,
       imgLinkBuilderOpts: {
         prefix: options.assetPrefix,
         toSlug: toSlug,
       },
       mediaData: mediaData,
       mediaPathMap: mediaPathMap,
+      useAbsolutePaths: options.useAbsolutePaths, // Add this line
     });
 
     // Convert to JSON and save

@@ -13335,13 +13335,13 @@ function findBestOptimizedPath(mediaFile) {
       for (const format of formatPreference) {
         const formatOption = mediaFile.sizes[size]?.find((option) => option.format === format);
         if (formatOption) {
-          return formatOption.publicPath;
+          return formatOption.absolutePublicPath || formatOption.publicPath;
         }
       }
     }
   }
   if (mediaFile.sizes.original && mediaFile.sizes.original.length > 0) {
-    return mediaFile.sizes.original[0].publicPath;
+    return mediaFile.sizes.original[0].absolutePublicPath || mediaFile.sizes.original[0].publicPath;
   }
   return null;
 }

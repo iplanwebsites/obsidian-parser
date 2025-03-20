@@ -172,6 +172,7 @@ export async function processMedia(
 /**
  * Find the best optimized path for a media file
  * Prefers: webp > avif > jpeg > original
+ * Uses absolutePublicPath if available (when domain is set)
  */
 function findBestOptimizedPath(mediaFile: MediaFileData): string | null {
   // Preferred size order: md, sm, lg, original
@@ -186,7 +187,8 @@ function findBestOptimizedPath(mediaFile: MediaFileData): string | null {
       for (const format of formatPreference) {
         const formatOption = mediaFile.sizes[size]?.find(option => option.format === format);
         if (formatOption) {
-          return formatOption.publicPath;
+          // Use absolutePublicPath if available (domain was set), otherwise fall back to publicPath
+          return formatOption.absolutePublicPath || formatOption.publicPath;
         }
       }
     }
@@ -194,7 +196,8 @@ function findBestOptimizedPath(mediaFile: MediaFileData): string | null {
   
   // If no optimized version found, use the original
   if (mediaFile.sizes.original && mediaFile.sizes.original.length > 0) {
-    return mediaFile.sizes.original[0].publicPath;
+    // Same here - use absolutePublicPath if available
+    return mediaFile.sizes.original[0].absolutePublicPath || mediaFile.sizes.original[0].publicPath;
   }
   
   return null;
