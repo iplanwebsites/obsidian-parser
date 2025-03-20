@@ -24,8 +24,8 @@ Obsidian Parser can:
 - [x] Configurable assets URL prefix (just dump your vault images and assets in a public folder or CDN)
 - [x] Optional image resizing & pre-processing scripts
 - [ ] Bug with media path handling when medias are in the the root folder (extra /. in publicPath)
-- [ ] Skip existing image files (feature isn't working)
-- [ ] Force recompute image (to disable skipping, once it'll work)
+- [x] Skip existing image files flag
+- [x] Force recompute image (to disable skipping, once it'll work)
 - [ ] Improve global Object structure (less nested objects if possible)
 - [ ] Improve logic and write test-cases for remarkObsidianMedia (video works?)
 - [ ] Cleanup-output-dir option (default false), clean, but can create erronous links if images are referenced elsewhere

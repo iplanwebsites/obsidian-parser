@@ -13266,6 +13266,8 @@ function createProcessMediaOptions(opts) {
     imageFormats: opts?.imageFormats || DEFAULT_IMAGE_FORMATS,
     skipExisting: opts?.skipExisting || false,
     // Default is false
+    forceReprocessMedias: opts?.forceReprocessMedias || false,
+    // New option (default false)
     domain: opts?.domain,
     // This can be undefined
     debug: opts?.debug || 0
@@ -13287,6 +13289,12 @@ async function processMedia(dirPath, opts) {
   const options = createProcessMediaOptions(opts);
   const log = createLogger2(options.debug);
   log(1, "\u{1F50D} Scanning media files in: " + dirPath);
+  if (options.skipExisting) {
+    log(1, "\u23ED\uFE0F Skip existing files: Enabled");
+  }
+  if (options.forceReprocessMedias) {
+    log(1, "\u{1F504} Force reprocessing: Enabled");
+  }
   if (!fs3.existsSync(options.mediaOutputFolder)) {
     fs3.mkdirSync(options.mediaOutputFolder, { recursive: true });
     log(1, "\u{1F4C1} Created output directory: " + options.mediaOutputFolder);
@@ -13299,18 +13307,20 @@ async function processMedia(dirPath, opts) {
   let lastUpdateTime = Date.now();
   let processedCount = 0;
   let skippedCount = 0;
+  let forcedReprocessCount = 0;
   const totalCount = mediaFiles.length;
   for (const [index, filePath] of mediaFiles.entries()) {
     try {
       processedCount = index + 1;
       const currentTime = Date.now();
       if (currentTime - lastUpdateTime > 1e3 || processedCount === totalCount) {
-        spinner.text = `Processing media files: ${processedCount}/${totalCount} (${Math.round(processedCount / totalCount * 100)}%) - Skipped: ${skippedCount}`;
+        spinner.text = `Processing media files: ${processedCount}/${totalCount} (${Math.round(processedCount / totalCount * 100)}%) - Skipped: ${skippedCount}${options.forceReprocessMedias ? ` - Forced: ${forcedReprocessCount}` : ""}`;
         lastUpdateTime = currentTime;
       }
       log(2, `\u2699\uFE0F Processing media file (${index + 1}/${mediaFiles.length}): ${filePath}`);
-      const mediaFile = await processMediaFile(filePath, dirPath, options, log, (wasSkipped) => {
+      const mediaFile = await processMediaFile(filePath, dirPath, options, log, (wasSkipped, wasForced) => {
         if (wasSkipped) skippedCount++;
+        if (wasForced) forcedReprocessCount++;
       });
       mediaData.push(mediaFile);
       const relativePath = path4.relative(dirPath, filePath).replace(/\\/g, "/");
@@ -13323,7 +13333,12 @@ async function processMedia(dirPath, opts) {
       log(0, `\u274C Error processing media file ${filePath}: ${error}`);
     }
   }
-  spinner.succeed(`\u2705 Processed ${mediaData.length} media files successfully (${skippedCount} skipped)`);
+  let successMessage = `\u2705 Processed ${mediaData.length} media files successfully (${skippedCount} skipped`;
+  if (options.forceReprocessMedias) {
+    successMessage += `, ${forcedReprocessCount} forced`;
+  }
+  successMessage += ")";
+  spinner.succeed(successMessage);
   return { mediaData, pathMap };
 }
 function findBestOptimizedPath(mediaFile) {
@@ -13381,6 +13396,9 @@ function findMediaFiles(dirPath, log) {
   return mediaFiles;
 }
 function shouldSkipFile(filePath, outputPath, options) {
+  if (options.forceReprocessMedias) {
+    return false;
+  }
   if (!options.skipExisting) {
     return false;
   }
@@ -13439,9 +13457,11 @@ async function processMediaFile(filePath, rootDir, options, log, onSkip) {
             log(3, `\u23ED\uFE0F Skipping conversion for original size: ${fileName}`);
             continue;
           }
-          if (shouldSkipFile(filePath, outputPath, options)) {
+          const shouldSkip = shouldSkipFile(filePath, outputPath, options);
+          const isForced = options.forceReprocessMedias && fs3.existsSync(outputPath);
+          if (shouldSkip) {
             log(2, `\u23ED\uFE0F Skipping existing file: ${outputFileName}`);
-            if (onSkip) onSkip(true);
+            if (onSkip) onSkip(true, false);
             const existingStats = fs3.statSync(outputPath);
             const existingMetadata = await sharp(outputPath).metadata();
             mediaFile.sizes[sizeName].push({
@@ -13455,6 +13475,10 @@ async function processMediaFile(filePath, rootDir, options, log, onSkip) {
               size: existingStats.size
             });
             continue;
+          }
+          if (isForced) {
+            log(2, `\u{1F504} Force reprocessing: ${outputFileName}`);
+            if (onSkip) onSkip(false, true);
           }
           let sharpInstance = sharp(filePath);
           if (size.suffix !== "original") {
@@ -13474,7 +13498,8 @@ async function processMediaFile(filePath, rootDir, options, log, onSkip) {
           } else if (format.format === "png") {
             sharpInstance = sharpInstance.png(format.options);
           }
-          log(3, `\u{1F504} Converting ${fileName} to ${format.format} (${size.suffix})`);
+          const actionType = isForced ? "Reprocessing" : "Converting";
+          log(3, `\u{1F504} ${actionType} ${fileName} to ${format.format} (${size.suffix})`);
           await sharpInstance.toFile(outputPath);
           const processedStats = fs3.statSync(outputPath);
           const processedMetadata = await sharp(outputPath).metadata();
@@ -13519,10 +13544,16 @@ async function processMediaFile(filePath, rootDir, options, log, onSkip) {
       log(3, `\u{1F4C1} Created directory: ${outputDir}`);
     }
     const outputPath = path4.join(outputDir, fileName);
-    if (shouldSkipFile(filePath, outputPath, options)) {
+    const shouldSkip = shouldSkipFile(filePath, outputPath, options);
+    const isForced = options.forceReprocessMedias && fs3.existsSync(outputPath);
+    if (shouldSkip) {
       log(2, `\u23ED\uFE0F Skipping existing file: ${fileName}`);
-      if (onSkip) onSkip(true);
+      if (onSkip) onSkip(true, false);
     } else {
+      if (isForced) {
+        log(2, `\u{1F504} Force reprocessing: ${fileName}`);
+        if (onSkip) onSkip(false, true);
+      }
       fs3.copyFileSync(filePath, outputPath);
       log(2, `\u{1F4CB} Copied: ${outputPath} (${formatBytes(stats.size)})`);
     }

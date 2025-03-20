@@ -138,6 +138,7 @@ interface ProcessMediaOptions {
         options: any;
     }>;
     skipExisting?: boolean;
+    forceReprocessMedias?: boolean;
     domain?: string;
     debug?: number;
 }

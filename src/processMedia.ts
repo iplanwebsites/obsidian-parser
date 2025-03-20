@@ -16,6 +16,7 @@ function createProcessMediaOptions(opts?: ProcessMediaOptions) {
     imageSizes: opts?.imageSizes || DEFAULT_IMAGE_SIZES,
     imageFormats: opts?.imageFormats || DEFAULT_IMAGE_FORMATS,
     skipExisting: opts?.skipExisting || false, // Default is false
+    forceReprocessMedias: opts?.forceReprocessMedias || false, // New option (default false)
     domain: opts?.domain, // This can be undefined
     debug: opts?.debug || 0
   };
@@ -77,8 +78,9 @@ export interface ProcessMediaOptions {
   optimizeImages?: boolean;
   imageSizes?: Array<{ width: number | null; height: number | null; suffix: string }>;
   imageFormats?: Array<{ format: string; options: any }>;
-  skipExisting?: boolean; // New option to skip existing files
-  domain?: string; // New option for domain to create absolute URLs
+  skipExisting?: boolean; // Option to skip existing files
+  forceReprocessMedias?: boolean; // New option to force reprocessing of media files
+  domain?: string; // Option for domain to create absolute URLs
   debug?: number;
 }
 
@@ -106,11 +108,16 @@ export async function processMedia(
   // Set default options
   const options = createProcessMediaOptions(opts);
 
- 
   // Create logging function based on debug level
   const log = createLogger(options.debug);
 
   log(1, "🔍 Scanning media files in: " + dirPath);
+  if (options.skipExisting) {
+    log(1, "⏭️ Skip existing files: Enabled");
+  }
+  if (options.forceReprocessMedias) {
+    log(1, "🔄 Force reprocessing: Enabled");
+  }
 
   // Create output directory if it doesn't exist
   if (!fs.existsSync(options.mediaOutputFolder)) {
@@ -130,6 +137,7 @@ export async function processMedia(
   let lastUpdateTime = Date.now();
   let processedCount = 0;
   let skippedCount = 0;
+  let forcedReprocessCount = 0;
   const totalCount = mediaFiles.length;
 
   // Process each media file
@@ -140,13 +148,14 @@ export async function processMedia(
       // Update the spinner text approximately every second
       const currentTime = Date.now();
       if (currentTime - lastUpdateTime > 1000 || processedCount === totalCount) {
-        spinner.text = `Processing media files: ${processedCount}/${totalCount} (${Math.round(processedCount/totalCount*100)}%) - Skipped: ${skippedCount}`;
+        spinner.text = `Processing media files: ${processedCount}/${totalCount} (${Math.round(processedCount/totalCount*100)}%) - Skipped: ${skippedCount}${options.forceReprocessMedias ? ` - Forced: ${forcedReprocessCount}` : ''}`;
         lastUpdateTime = currentTime;
       }
       
       log(2, `⚙️ Processing media file (${index+1}/${mediaFiles.length}): ${filePath}`);
-      const mediaFile = await processMediaFile(filePath, dirPath, options, log, (wasSkipped) => {
+      const mediaFile = await processMediaFile(filePath, dirPath, options, log, (wasSkipped, wasForced) => {
         if (wasSkipped) skippedCount++;
+        if (wasForced) forcedReprocessCount++;
       });
       
       mediaData.push(mediaFile);
@@ -164,7 +173,12 @@ export async function processMedia(
   }
 
   // Complete the progress spinner
-  spinner.succeed(`✅ Processed ${mediaData.length} media files successfully (${skippedCount} skipped)`);
+  let successMessage = `✅ Processed ${mediaData.length} media files successfully (${skippedCount} skipped`;
+  if (options.forceReprocessMedias) {
+    successMessage += `, ${forcedReprocessCount} forced`;
+  }
+  successMessage += ")";
+  spinner.succeed(successMessage);
 
   return { mediaData, pathMap };
 }
@@ -256,6 +270,12 @@ function shouldSkipFile(
   outputPath: string,
   options: ReturnType<typeof createProcessMediaOptions>
 ): boolean {
+  // If force reprocessing is enabled, never skip
+  if (options.forceReprocessMedias) {
+    return false;
+  }
+  
+  // If skip existing is disabled, never skip
   if (!options.skipExisting) {
     return false;
   }
@@ -283,7 +303,7 @@ function shouldSkipFile(
  * @param rootDir Root directory path
  * @param options Processing options
  * @param log Logging function
- * @param onSkip Callback when a file is skipped
+ * @param onSkip Callback when a file is skipped or forced
  * @returns Media file data
  */
 async function processMediaFile(
@@ -291,7 +311,7 @@ async function processMediaFile(
   rootDir: string,
   options: ReturnType<typeof createProcessMediaOptions>,
   log: (level: number, message: string) => void,
-  onSkip?: (skipped: boolean) => void
+  onSkip?: (skipped: boolean, forced: boolean) => void
 ): Promise<MediaFileData> {
   const { base: fileName, ext: fileExt } = path.parse(filePath);
   const relativePath = path.relative(rootDir, filePath);
@@ -361,9 +381,12 @@ async function processMediaFile(
           }
 
           // Check if we should skip processing this file
-          if (shouldSkipFile(filePath, outputPath, options)) {
+          const shouldSkip = shouldSkipFile(filePath, outputPath, options);
+          const isForced = options.forceReprocessMedias && fs.existsSync(outputPath);
+          
+          if (shouldSkip) {
             log(2, `⏭️ Skipping existing file: ${outputFileName}`);
-            if (onSkip) onSkip(true);
+            if (onSkip) onSkip(true, false);
             
             // Get stats of the existing file
             const existingStats = fs.statSync(outputPath);
@@ -381,6 +404,11 @@ async function processMediaFile(
             });
             
             continue;
+          }
+          
+          if (isForced) {
+            log(2, `🔄 Force reprocessing: ${outputFileName}`);
+            if (onSkip) onSkip(false, true);
           }
 
           // Process image with sharp
@@ -408,7 +436,8 @@ async function processMediaFile(
           }
 
           // Process and save the image
-          log(3, `🔄 Converting ${fileName} to ${format.format} (${size.suffix})`);
+          const actionType = isForced ? "Reprocessing" : "Converting";
+          log(3, `🔄 ${actionType} ${fileName} to ${format.format} (${size.suffix})`);
           await sharpInstance.toFile(outputPath);
 
           // Get stats of the processed file
@@ -465,12 +494,18 @@ async function processMediaFile(
     }
 
     const outputPath = path.join(outputDir, fileName);
+    const shouldSkip = shouldSkipFile(filePath, outputPath, options);
+    const isForced = options.forceReprocessMedias && fs.existsSync(outputPath);
     
     // Check if we should skip copying this file
-    if (shouldSkipFile(filePath, outputPath, options)) {
+    if (shouldSkip) {
       log(2, `⏭️ Skipping existing file: ${fileName}`);
-      if (onSkip) onSkip(true);
+      if (onSkip) onSkip(true, false);
     } else {
+      if (isForced) {
+        log(2, `🔄 Force reprocessing: ${fileName}`);
+        if (onSkip) onSkip(false, true);
+      }
       fs.copyFileSync(filePath, outputPath);
       log(2, `📋 Copied: ${outputPath} (${formatBytes(stats.size)})`);
     }

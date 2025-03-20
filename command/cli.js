@@ -30,8 +30,12 @@ program
   .option("--optimize-images", "Optimize images", true)
   .option("--skip-media", "Skip media processing", false)
   .option("--skip-existing", "Skip processing existing media files", false)
+  .option(
+    "--force-reprocess-medias",
+    "Force reprocessing of media files even if they exist",
+    false
+  )
   .option("--domain <url>", "Domain for absolute public paths")
-  // in cli.js
   .option(
     "--use-absolute-paths",
     "Use absolute paths with domain for media replacements in articles",
@@ -68,6 +72,9 @@ const options = program.opts();
     if (options.skipExisting) {
       console.log(`⏭️ Skip existing files: Enabled`);
     }
+    if (options.forceReprocessMedias) {
+      console.log(`🔄 Force reprocessing of media files: Enabled`);
+    }
     if (options.domain) {
       console.log(`🌐 Domain for absolute paths: ${options.domain}`);
     }
@@ -84,7 +91,8 @@ const options = program.opts();
         mediaPathPrefix: options.mediaPrefix,
         optimizeImages: options.optimizeImages,
         skipExisting: options.skipExisting,
-        domain: options.domain, // Pass domain to processMedia
+        forceReprocessMedias: options.forceReprocessMedias,
+        domain: options.domain,
         debug: debugLevel,
       });
 
@@ -119,7 +127,7 @@ const options = program.opts();
       },
       mediaData: mediaData,
       mediaPathMap: mediaPathMap,
-      useAbsolutePaths: options.useAbsolutePaths, // Add this line
+      useAbsolutePaths: options.useAbsolutePaths,
     });
 
     // Convert to JSON and save
@@ -141,5 +149,6 @@ const options = program.opts();
 // npm run convert -- -i test/testVault -o testOutput.json --media-output public/assets --media-prefix /assets
 // npm run convert -- -i test/testVault -o testOutput.json --skip-media
 // npm run convert -- -i test/testVault -o testOutput.json --skip-existing
+// npm run convert -- -i test/testVault -o testOutput.json --force-reprocess-medias
 // npm run convert -- -i test/testVault -o testOutput.json --media-results media-data.json
 // npm run convert -- -i test/testVault -o testOutput.json --domain https://example.com
