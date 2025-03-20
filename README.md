@@ -18,7 +18,7 @@ Obsidian Parser can:
 - [x] Provide original note path as prop
 - [x] Hide all private notes (set a `public: true` property to publish)
 - [x] automatic, Url-friendly, slug generation
-- [x] Rewrite links to replace regular links with custom slugs. Log errors to the console. Possible Throw error to prevent issues.
+- [x] Rewrite links to replace regular links with generated auto slugs. Log errors to the console. Possible Throw error to prevent issues.
 - [ ] Set custom slugs on notes (via `slug` property)
 - [x] Advanced image and resource parsing for assets's unnique wiki `![[filename]]` syntax
 - [x] Configurable assets URL prefix (just dump your vault images and assets in a public folder or CDN)
