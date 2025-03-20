@@ -18,14 +18,22 @@ Obsidian Parser can:
 - [x] Provide original note path as prop
 - [x] Hide all private notes (set a `public: true` property to publish)
 - [x] automatic, Url-friendly, slug generation
-- [ ] Rewrite links to replace regular links with custom slugs. Log errors to the console. Possible Throw error to prevent issues.
+- [x] Rewrite links to replace regular links with custom slugs. Log errors to the console. Possible Throw error to prevent issues.
 - [ ] Set custom slugs on notes (via `slug` property)
-- [ ] Advanced image and resource parsing for assets's unnique wiki `![[filename]]` syntax
-- [ ] Configurable assets URL prefix (just dump your vault images and assets in a public folder or CDN)
-- [ ] Optional image resizing & pre-processing scripts, and corresponding src-set generation for different device resolution.
+- [x] Advanced image and resource parsing for assets's unnique wiki `![[filename]]` syntax
+- [x] Configurable assets URL prefix (just dump your vault images and assets in a public folder or CDN)
+- [x] Optional image resizing & pre-processing scripts
+- [ ] Bug with media path handling when medias are in the the root folder (extra /. in publicPath)
+- [ ] Skip existing image files (feature isn't working)
+- [ ] Force recompute image (to disable skipping, once it'll work)
+- [ ] Improve global Object structure (less nested objects if possible)
+- [ ] Improve logic and write test-cases for remarkObsidianMedia (video works?)
+- [ ] Cleanup-output-dir option (default false), clean, but can create erronous links if images are referenced elsewhere
+- [ ] Compute embeddings for articles + images (similarity + search)
+- [ ] Prettier console feedback
+- [ ] Generate images src-set for different device resolution based on sizes specs
 - [ ] Backlink computation (enabled by extracting internal-links on all notes first)
 - [ ] Note graph extraction (including backlinks for files and resources)
-- [ ] Extended customization options for flexible workflow integration
 - [ ] Youtube embeds (just paste a youtube link)
 - [ ] Parametric config to enable/disable different modules, and pass options to processing module.
 - [ ] Good documentaiton
