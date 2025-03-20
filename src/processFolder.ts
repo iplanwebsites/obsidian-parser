@@ -17,12 +17,13 @@ import remarkCallouts from "remark-callouts";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { remarkObsidianLink } from "remark-obsidian-link";
+import { remarkObsidianMedia } from "./remarkObsidianMedia"; // Import our media plugin
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 import m from ".";
 import * as lib from "./lib";
-import { toLinkBuilder } from "./toLinkBuilder";
+import { toLinkBuilder } from "./toLinkBuilder"; // Import just the function
 import { Metamark } from "./types";
 import { MediaFileData, MediaPathMap, ProcessMediaOptions } from "./processMedia";
 
@@ -34,10 +35,15 @@ declare module "./types" {
         interface ProcessOptions {
           // Make sure debug is explicitly declared
           debug?: number;
-          // Add media-related properties
+          // File path options
+          filePathAllowSetBuilder?: (dirPath: string) => Set<string>;
+          notePathPrefix?: string;
+          // Media-related properties
           mediaOptions?: ProcessMediaOptions;
           mediaData?: MediaFileData[];
           mediaPathMap?: MediaPathMap;
+          useAbsolutePaths?: boolean;
+          preferredSize?: 'sm' | 'md' | 'lg';
           // Option to determine if media details should be included in output
           includeMediaData?: boolean;
         }
@@ -48,6 +54,9 @@ declare module "./types" {
 
 /**
  * Process an Obsidian vault directory and return file data for public files
+ * @param dirPath Path to the Obsidian vault directory
+ * @param opts Processing options including media handling
+ * @returns Array of processed file data objects
  */
 export async function processFolder(
   dirPath: string,
@@ -70,18 +79,39 @@ export async function processFolder(
   log(1, `📄 Found ${allowedFiles.size} allowed files to process`);
 
   // Build link transformer
-  const toLink = toLinkBuilder({
+  const toLinkOptions: any = {
     filePathAllowSet: allowedFiles,
     toSlug: m.utility.toSlug,
-    prefix: opts?.notePathPrefix ?? "/content",
-    ...(opts?.toLinkBuilderOpts || {})
-  });
+    prefix: opts?.notePathPrefix ?? "/content"
+  };
+  
+  // Add any additional options that might be present in toLinkBuilderOpts
+  if (opts?.toLinkBuilderOpts) {
+    Object.assign(toLinkOptions, opts.toLinkBuilderOpts);
+  }
+  
+  const toLink = toLinkBuilder(toLinkOptions);
 
-  // Create unified processor
-  const processor = buildMarkdownProcessor({ toLink });
-
-  // Media path map (can be passed in or will be empty if not available)
+  // Media data and path map (can be passed in or will be empty if not available)
+  const mediaData = opts?.mediaData || [];
   const mediaPathMap: MediaPathMap = opts?.mediaPathMap || {};
+  
+  // Log media info if available
+  if (mediaData.length > 0) {
+    log(1, `🖼️ Found ${mediaData.length} media items to process`);
+  }
+  if (Object.keys(mediaPathMap).length > 0) {
+    log(1, `🔗 Found ${Object.keys(mediaPathMap).length} media path mappings`);
+  }
+
+  // Create unified processor with media support
+  const processor = buildMarkdownProcessor({ 
+    toLink,
+    mediaData,
+    mediaPathMap,
+    useAbsolutePaths: opts?.useAbsolutePaths || false,
+    preferredSize: opts?.preferredSize || 'md'
+  });
 
   // Process pages
   const pages: Metamark.Obsidian.Vault.FileData[] = [];
@@ -98,15 +128,9 @@ export async function processFolder(
       const raw = fs.readFileSync(filePath, "utf8");
       const { content: markdown, data: frontmatter } = matter(raw);
 
-      // Process to HTML
+      // Process to HTML - our remarkObsidianMedia plugin will handle media links
       const mdastRoot = processor.parse(markdown) as MdastRoot;
-      let htmlString = processor.processSync(markdown).toString();
-
-      // Replace image paths with optimized versions if available
-      if (Object.keys(mediaPathMap).length > 0) {
-        htmlString = replaceImagePaths(htmlString, mediaPathMap, dirPath);
-        log(2, `🖼️ Replaced image paths in: ${fileName}`);
-      }
+      const htmlString = processor.processSync(markdown).toString();
 
       // Calculate relative path from vault root
       const relativePath = path.relative(dirPath, filePath);
@@ -134,62 +158,49 @@ export async function processFolder(
   
   // If includeMediaData is true, add the media data to the first page object only
   // This is useful if you need the media data elsewhere but don't want to duplicate it
-  if (opts?.includeMediaData && pages.length > 0 && opts?.mediaData) {
+  if (opts?.includeMediaData && pages.length > 0 && mediaData.length > 0) {
     // Create a special property on the first page to hold the media catalog
     // @ts-ignore - Adding custom property
-    pages[0]._mediaData = opts.mediaData;
+    pages[0]._mediaData = mediaData;
     log(1, `📊 Added media catalog to first page object`);
+    
+    // Also add the path map if available
+    if (Object.keys(mediaPathMap).length > 0) {
+      // @ts-ignore - Adding custom property
+      pages[0]._mediaPathMap = mediaPathMap;
+      log(1, `🗺️ Added media path map to first page object`);
+    }
   }
   
   return pages;
 }
 
 /**
- * Replace image paths in HTML with optimized versions
+ * Build the unified processor with wiki link and media support
  */
-function replaceImagePaths(
-  html: string, 
-  mediaPathMap: MediaPathMap,
-  basePath: string
-): string {
-  // Use regex to find image tags and replace their src attributes
-  return html.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/g, (match, src) => {
-    // Determine if this is a relative path that needs replacement
-    if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/')) {
-      // External or already absolute path, don't replace
-      return match;
-    }
-    
-    // Normalize path to match our media catalog
-    let normalizedPath = src;
-    
-    // Check if it's in our media map
-    if (mediaPathMap[normalizedPath]) {
-      // Replace with optimized path
-      const newSrc = mediaPathMap[normalizedPath];
-      return match.replace(src, newSrc);
-    }
-    
-    // Try checking with base path
-    const fullPath = path.relative(basePath, path.resolve(basePath, normalizedPath));
-    if (mediaPathMap[fullPath]) {
-      const newSrc = mediaPathMap[fullPath];
-      return match.replace(src, newSrc);
-    }
-    
-    // If not found, keep original
-    return match;
-  });
-}
-
-/**
- * Build the unified processor with a single wiki link parser
- */
-function buildMarkdownProcessor({ toLink }: { toLink: ReturnType<typeof toLinkBuilder> }) {
+function buildMarkdownProcessor({ 
+  toLink, 
+  mediaData = [],
+  mediaPathMap = {},
+  useAbsolutePaths = false,
+  preferredSize = 'md'
+}: { 
+  toLink: ReturnType<typeof toLinkBuilder>;
+  mediaData?: MediaFileData[];
+  mediaPathMap?: MediaPathMap;
+  useAbsolutePaths?: boolean;
+  preferredSize?: 'sm' | 'md' | 'lg';
+}) {
   return unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkObsidianLink, { toLink })
+    .use(remarkObsidianMedia, { 
+      mediaData, 
+      mediaPathMap,
+      useAbsolutePaths,
+      preferredSize
+    })
     .use(remarkCallouts)
     .use(remarkMath)
     .use(remarkRehype)

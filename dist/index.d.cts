@@ -165,9 +165,13 @@ declare module "./types" {
             namespace Vault {
                 interface ProcessOptions {
                     debug?: number;
+                    filePathAllowSetBuilder?: (dirPath: string) => Set<string>;
+                    notePathPrefix?: string;
                     mediaOptions?: ProcessMediaOptions;
                     mediaData?: MediaFileData[];
                     mediaPathMap?: MediaPathMap;
+                    useAbsolutePaths?: boolean;
+                    preferredSize?: 'sm' | 'md' | 'lg';
                     includeMediaData?: boolean;
                 }
             }
@@ -176,6 +180,9 @@ declare module "./types" {
 }
 /**
  * Process an Obsidian vault directory and return file data for public files
+ * @param dirPath Path to the Obsidian vault directory
+ * @param opts Processing options including media handling
+ * @returns Array of processed file data objects
  */
 declare function processFolder(dirPath: string, opts?: Metamark.Obsidian.Vault.ProcessOptions): Promise<Metamark.Obsidian.Vault.FileData[]>;
 

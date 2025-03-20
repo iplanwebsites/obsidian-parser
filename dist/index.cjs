@@ -12887,6 +12887,147 @@ var import_remark_callouts = __toESM(require("remark-callouts"), 1);
 var import_remark_gfm = __toESM(require("remark-gfm"), 1);
 var import_remark_math = __toESM(require("remark-math"), 1);
 var import_remark_obsidian_link = require("remark-obsidian-link");
+
+// src/remarkObsidianMedia.ts
+var import_unist_util_visit2 = require("unist-util-visit");
+var import_path = __toESM(require("path"), 1);
+var DEFAULT_IMAGE = "/placeholder/400/300";
+var remarkObsidianMedia = (options = {}) => {
+  const {
+    mediaData = [],
+    mediaPathMap = {},
+    defaultImage = DEFAULT_IMAGE,
+    basePath = "",
+    useAbsolutePaths = false,
+    preferredSize = "md"
+  } = options;
+  const mediaByName = /* @__PURE__ */ new Map();
+  const mediaByPath = /* @__PURE__ */ new Map();
+  mediaData.forEach((item) => {
+    mediaByName.set(item.fileName.toLowerCase(), item);
+    mediaByPath.set(item.originalPath.toLowerCase(), item);
+    const nameOnly = import_path.default.basename(item.originalPath);
+    if (nameOnly.toLowerCase() !== item.fileName.toLowerCase()) {
+      mediaByName.set(nameOnly.toLowerCase(), item);
+    }
+  });
+  const mediaRegex = /!\[\[(.*?)\]\]/g;
+  return (tree) => {
+    (0, import_unist_util_visit2.visit)(tree, "text", (node, index, parent) => {
+      if (!parent || index === null) return;
+      const { value } = node;
+      const matches = Array.from(value.matchAll(mediaRegex));
+      if (matches.length === 0) return;
+      const newNodes = [];
+      let lastIndex = 0;
+      for (const match of matches) {
+        const [fullMatch, mediaLink] = match;
+        const matchIndex = match.index;
+        if (matchIndex > lastIndex) {
+          newNodes.push({ type: "text", value: value.slice(lastIndex, matchIndex) });
+        }
+        const mediaFileName = import_path.default.basename(mediaLink);
+        if (mediaPathMap[mediaLink]) {
+          newNodes.push({
+            type: "image",
+            url: mediaPathMap[mediaLink],
+            alt: mediaFileName,
+            title: mediaFileName,
+            data: {
+              hProperties: {
+                loading: "lazy",
+                class: "obsidian-media mapped"
+              }
+            }
+          });
+        } else {
+          const withLeadingSlash = mediaLink.startsWith("/") ? mediaLink : `/${mediaLink}`;
+          const withoutLeadingSlash = mediaLink.startsWith("/") ? mediaLink.substring(1) : mediaLink;
+          const normalizedPath = mediaLink.replace(/\\/g, "/");
+          const pathVariations = [
+            withLeadingSlash,
+            withoutLeadingSlash,
+            normalizedPath,
+            normalizedPath.toLowerCase(),
+            import_path.default.basename(mediaLink)
+          ];
+          let found = false;
+          for (const pathVar of pathVariations) {
+            if (mediaPathMap[pathVar]) {
+              newNodes.push({
+                type: "image",
+                url: mediaPathMap[pathVar],
+                alt: mediaFileName,
+                title: mediaFileName,
+                data: {
+                  hProperties: {
+                    loading: "lazy",
+                    class: "obsidian-media mapped"
+                  }
+                }
+              });
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            const normalizedPath2 = mediaLink.toLowerCase();
+            const normalizedName = mediaFileName.toLowerCase();
+            let mediaItem = mediaByPath.get(normalizedPath2) || mediaByName.get(normalizedName) || mediaByName.get(normalizedPath2);
+            if (mediaItem) {
+              const sizes = mediaItem.sizes[preferredSize] || mediaItem.sizes.md || mediaItem.sizes.sm || mediaItem.sizes.lg || mediaItem.sizes.original;
+              if (sizes && sizes.length > 0) {
+                const sizeInfo = sizes[0];
+                const imagePath = useAbsolutePaths && sizeInfo.absolutePublicPath ? sizeInfo.absolutePublicPath : sizeInfo.publicPath;
+                newNodes.push({
+                  type: "image",
+                  url: imagePath,
+                  alt: mediaFileName,
+                  title: `${mediaFileName} (${sizeInfo.width}x${sizeInfo.height})`,
+                  data: {
+                    hProperties: {
+                      width: sizeInfo.width,
+                      height: sizeInfo.height,
+                      loading: "lazy",
+                      class: `obsidian-media size-${preferredSize}`
+                    }
+                  }
+                });
+              } else {
+                newNodes.push(createDefaultImage(mediaFileName));
+              }
+            } else {
+              newNodes.push(createDefaultImage(mediaFileName));
+            }
+          }
+        }
+        lastIndex = matchIndex + fullMatch.length;
+      }
+      if (lastIndex < value.length) {
+        newNodes.push({ type: "text", value: value.slice(lastIndex) });
+      }
+      parent.children.splice(index, 1, ...newNodes);
+      return index + newNodes.length - 1;
+    });
+  };
+  function createDefaultImage(alt) {
+    return {
+      type: "image",
+      url: defaultImage,
+      alt,
+      title: `Image not found: ${alt}`,
+      data: {
+        hProperties: {
+          width: 400,
+          height: 300,
+          class: "obsidian-media placeholder"
+        }
+      }
+    };
+  }
+};
+
+// src/processFolder.ts
 var import_remark_parse = __toESM(require("remark-parse"), 1);
 var import_remark_rehype = __toESM(require("remark-rehype"), 1);
 var import_unified = require("unified");
@@ -13027,14 +13168,30 @@ async function processFolder(dirPath, opts) {
   log(1, "\u{1F50D} Processing Obsidian vault: " + dirPath);
   const allowedFiles = opts?.filePathAllowSetBuilder?.(dirPath) ?? buildDefaultAllowedFileSet(dirPath, log);
   log(1, `\u{1F4C4} Found ${allowedFiles.size} allowed files to process`);
-  const toLink = toLinkBuilder({
+  const toLinkOptions = {
     filePathAllowSet: allowedFiles,
     toSlug: src_default.utility.toSlug,
-    prefix: opts?.notePathPrefix ?? "/content",
-    ...opts?.toLinkBuilderOpts || {}
-  });
-  const processor = buildMarkdownProcessor({ toLink });
+    prefix: opts?.notePathPrefix ?? "/content"
+  };
+  if (opts?.toLinkBuilderOpts) {
+    Object.assign(toLinkOptions, opts.toLinkBuilderOpts);
+  }
+  const toLink = toLinkBuilder(toLinkOptions);
+  const mediaData = opts?.mediaData || [];
   const mediaPathMap = opts?.mediaPathMap || {};
+  if (mediaData.length > 0) {
+    log(1, `\u{1F5BC}\uFE0F Found ${mediaData.length} media items to process`);
+  }
+  if (Object.keys(mediaPathMap).length > 0) {
+    log(1, `\u{1F517} Found ${Object.keys(mediaPathMap).length} media path mappings`);
+  }
+  const processor = buildMarkdownProcessor({
+    toLink,
+    mediaData,
+    mediaPathMap,
+    useAbsolutePaths: opts?.useAbsolutePaths || false,
+    preferredSize: opts?.preferredSize || "md"
+  });
   const pages = [];
   for (const filePath of allowedFiles) {
     if (typeof filePath !== "string" || !filePath.endsWith(".md")) continue;
@@ -13044,11 +13201,7 @@ async function processFolder(dirPath, opts) {
       const raw = import_node_fs2.default.readFileSync(filePath, "utf8");
       const { content: markdown2, data: frontmatter } = (0, import_gray_matter2.default)(raw);
       const mdastRoot = processor.parse(markdown2);
-      let htmlString = processor.processSync(markdown2).toString();
-      if (Object.keys(mediaPathMap).length > 0) {
-        htmlString = replaceImagePaths(htmlString, mediaPathMap, dirPath);
-        log(2, `\u{1F5BC}\uFE0F Replaced image paths in: ${fileName}`);
-      }
+      const htmlString = processor.processSync(markdown2).toString();
       const relativePath = import_node_path2.default.relative(dirPath, filePath);
       const file = {
         fileName,
@@ -13067,32 +13220,29 @@ async function processFolder(dirPath, opts) {
     }
   }
   log(1, `\u{1F389} Successfully processed ${pages.length} files`);
-  if (opts?.includeMediaData && pages.length > 0 && opts?.mediaData) {
-    pages[0]._mediaData = opts.mediaData;
+  if (opts?.includeMediaData && pages.length > 0 && mediaData.length > 0) {
+    pages[0]._mediaData = mediaData;
     log(1, `\u{1F4CA} Added media catalog to first page object`);
+    if (Object.keys(mediaPathMap).length > 0) {
+      pages[0]._mediaPathMap = mediaPathMap;
+      log(1, `\u{1F5FA}\uFE0F Added media path map to first page object`);
+    }
   }
   return pages;
 }
-function replaceImagePaths(html, mediaPathMap, basePath) {
-  return html.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/g, (match, src) => {
-    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("/")) {
-      return match;
-    }
-    let normalizedPath = src;
-    if (mediaPathMap[normalizedPath]) {
-      const newSrc = mediaPathMap[normalizedPath];
-      return match.replace(src, newSrc);
-    }
-    const fullPath = import_node_path2.default.relative(basePath, import_node_path2.default.resolve(basePath, normalizedPath));
-    if (mediaPathMap[fullPath]) {
-      const newSrc = mediaPathMap[fullPath];
-      return match.replace(src, newSrc);
-    }
-    return match;
-  });
-}
-function buildMarkdownProcessor({ toLink }) {
-  return (0, import_unified.unified)().use(import_remark_parse.default).use(import_remark_gfm.default).use(import_remark_obsidian_link.remarkObsidianLink, { toLink }).use(import_remark_callouts.default).use(import_remark_math.default).use(import_remark_rehype.default).use(import_rehype_external_links.default).use(import_rehype_slug.default).use(import_rehype_autolink_headings.default, { behavior: "wrap" }).use(import_rehype_highlight.default, {
+function buildMarkdownProcessor({
+  toLink,
+  mediaData = [],
+  mediaPathMap = {},
+  useAbsolutePaths = false,
+  preferredSize = "md"
+}) {
+  return (0, import_unified.unified)().use(import_remark_parse.default).use(import_remark_gfm.default).use(import_remark_obsidian_link.remarkObsidianLink, { toLink }).use(remarkObsidianMedia, {
+    mediaData,
+    mediaPathMap,
+    useAbsolutePaths,
+    preferredSize
+  }).use(import_remark_callouts.default).use(import_remark_math.default).use(import_remark_rehype.default).use(import_rehype_external_links.default).use(import_rehype_slug.default).use(import_rehype_autolink_headings.default, { behavior: "wrap" }).use(import_rehype_highlight.default, {
     languages: { ...grammars, elixir }
   }).use(import_chtml.default, {
     chtml: {

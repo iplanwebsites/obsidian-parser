@@ -12839,7 +12839,7 @@ var grammars = {
 
 // src/processFolder.ts
 import fs2 from "node:fs";
-import path2 from "node:path";
+import path3 from "node:path";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeExternalLinks from "rehype-external-links";
 import rehypeHighlight from "rehype-highlight";
@@ -12850,6 +12850,147 @@ import remarkCallouts from "remark-callouts";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { remarkObsidianLink } from "remark-obsidian-link";
+
+// src/remarkObsidianMedia.ts
+import { visit as visit2 } from "unist-util-visit";
+import path2 from "path";
+var DEFAULT_IMAGE = "/placeholder/400/300";
+var remarkObsidianMedia = (options = {}) => {
+  const {
+    mediaData = [],
+    mediaPathMap = {},
+    defaultImage = DEFAULT_IMAGE,
+    basePath = "",
+    useAbsolutePaths = false,
+    preferredSize = "md"
+  } = options;
+  const mediaByName = /* @__PURE__ */ new Map();
+  const mediaByPath = /* @__PURE__ */ new Map();
+  mediaData.forEach((item) => {
+    mediaByName.set(item.fileName.toLowerCase(), item);
+    mediaByPath.set(item.originalPath.toLowerCase(), item);
+    const nameOnly = path2.basename(item.originalPath);
+    if (nameOnly.toLowerCase() !== item.fileName.toLowerCase()) {
+      mediaByName.set(nameOnly.toLowerCase(), item);
+    }
+  });
+  const mediaRegex = /!\[\[(.*?)\]\]/g;
+  return (tree) => {
+    visit2(tree, "text", (node, index, parent) => {
+      if (!parent || index === null) return;
+      const { value } = node;
+      const matches = Array.from(value.matchAll(mediaRegex));
+      if (matches.length === 0) return;
+      const newNodes = [];
+      let lastIndex = 0;
+      for (const match of matches) {
+        const [fullMatch, mediaLink] = match;
+        const matchIndex = match.index;
+        if (matchIndex > lastIndex) {
+          newNodes.push({ type: "text", value: value.slice(lastIndex, matchIndex) });
+        }
+        const mediaFileName = path2.basename(mediaLink);
+        if (mediaPathMap[mediaLink]) {
+          newNodes.push({
+            type: "image",
+            url: mediaPathMap[mediaLink],
+            alt: mediaFileName,
+            title: mediaFileName,
+            data: {
+              hProperties: {
+                loading: "lazy",
+                class: "obsidian-media mapped"
+              }
+            }
+          });
+        } else {
+          const withLeadingSlash = mediaLink.startsWith("/") ? mediaLink : `/${mediaLink}`;
+          const withoutLeadingSlash = mediaLink.startsWith("/") ? mediaLink.substring(1) : mediaLink;
+          const normalizedPath = mediaLink.replace(/\\/g, "/");
+          const pathVariations = [
+            withLeadingSlash,
+            withoutLeadingSlash,
+            normalizedPath,
+            normalizedPath.toLowerCase(),
+            path2.basename(mediaLink)
+          ];
+          let found = false;
+          for (const pathVar of pathVariations) {
+            if (mediaPathMap[pathVar]) {
+              newNodes.push({
+                type: "image",
+                url: mediaPathMap[pathVar],
+                alt: mediaFileName,
+                title: mediaFileName,
+                data: {
+                  hProperties: {
+                    loading: "lazy",
+                    class: "obsidian-media mapped"
+                  }
+                }
+              });
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            const normalizedPath2 = mediaLink.toLowerCase();
+            const normalizedName = mediaFileName.toLowerCase();
+            let mediaItem = mediaByPath.get(normalizedPath2) || mediaByName.get(normalizedName) || mediaByName.get(normalizedPath2);
+            if (mediaItem) {
+              const sizes = mediaItem.sizes[preferredSize] || mediaItem.sizes.md || mediaItem.sizes.sm || mediaItem.sizes.lg || mediaItem.sizes.original;
+              if (sizes && sizes.length > 0) {
+                const sizeInfo = sizes[0];
+                const imagePath = useAbsolutePaths && sizeInfo.absolutePublicPath ? sizeInfo.absolutePublicPath : sizeInfo.publicPath;
+                newNodes.push({
+                  type: "image",
+                  url: imagePath,
+                  alt: mediaFileName,
+                  title: `${mediaFileName} (${sizeInfo.width}x${sizeInfo.height})`,
+                  data: {
+                    hProperties: {
+                      width: sizeInfo.width,
+                      height: sizeInfo.height,
+                      loading: "lazy",
+                      class: `obsidian-media size-${preferredSize}`
+                    }
+                  }
+                });
+              } else {
+                newNodes.push(createDefaultImage(mediaFileName));
+              }
+            } else {
+              newNodes.push(createDefaultImage(mediaFileName));
+            }
+          }
+        }
+        lastIndex = matchIndex + fullMatch.length;
+      }
+      if (lastIndex < value.length) {
+        newNodes.push({ type: "text", value: value.slice(lastIndex) });
+      }
+      parent.children.splice(index, 1, ...newNodes);
+      return index + newNodes.length - 1;
+    });
+  };
+  function createDefaultImage(alt) {
+    return {
+      type: "image",
+      url: defaultImage,
+      alt,
+      title: `Image not found: ${alt}`,
+      data: {
+        hProperties: {
+          width: 400,
+          height: 300,
+          class: "obsidian-media placeholder"
+        }
+      }
+    };
+  }
+};
+
+// src/processFolder.ts
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
@@ -12984,35 +13125,47 @@ var Regex = {
 
 // src/processFolder.ts
 async function processFolder(dirPath, opts) {
-  dirPath = path2.normalize(dirPath);
+  dirPath = path3.normalize(dirPath);
   const debugLevel = opts?.debug || 0;
   const log = createLogger(debugLevel);
   log(1, "\u{1F50D} Processing Obsidian vault: " + dirPath);
   const allowedFiles = opts?.filePathAllowSetBuilder?.(dirPath) ?? buildDefaultAllowedFileSet(dirPath, log);
   log(1, `\u{1F4C4} Found ${allowedFiles.size} allowed files to process`);
-  const toLink = toLinkBuilder({
+  const toLinkOptions = {
     filePathAllowSet: allowedFiles,
     toSlug: src_default.utility.toSlug,
-    prefix: opts?.notePathPrefix ?? "/content",
-    ...opts?.toLinkBuilderOpts || {}
-  });
-  const processor = buildMarkdownProcessor({ toLink });
+    prefix: opts?.notePathPrefix ?? "/content"
+  };
+  if (opts?.toLinkBuilderOpts) {
+    Object.assign(toLinkOptions, opts.toLinkBuilderOpts);
+  }
+  const toLink = toLinkBuilder(toLinkOptions);
+  const mediaData = opts?.mediaData || [];
   const mediaPathMap = opts?.mediaPathMap || {};
+  if (mediaData.length > 0) {
+    log(1, `\u{1F5BC}\uFE0F Found ${mediaData.length} media items to process`);
+  }
+  if (Object.keys(mediaPathMap).length > 0) {
+    log(1, `\u{1F517} Found ${Object.keys(mediaPathMap).length} media path mappings`);
+  }
+  const processor = buildMarkdownProcessor({
+    toLink,
+    mediaData,
+    mediaPathMap,
+    useAbsolutePaths: opts?.useAbsolutePaths || false,
+    preferredSize: opts?.preferredSize || "md"
+  });
   const pages = [];
   for (const filePath of allowedFiles) {
     if (typeof filePath !== "string" || !filePath.endsWith(".md")) continue;
     try {
       log(2, `\u2699\uFE0F Processing file: ${filePath}`);
-      const { name: fileName } = path2.parse(filePath);
+      const { name: fileName } = path3.parse(filePath);
       const raw = fs2.readFileSync(filePath, "utf8");
       const { content: markdown2, data: frontmatter } = matter2(raw);
       const mdastRoot = processor.parse(markdown2);
-      let htmlString = processor.processSync(markdown2).toString();
-      if (Object.keys(mediaPathMap).length > 0) {
-        htmlString = replaceImagePaths(htmlString, mediaPathMap, dirPath);
-        log(2, `\u{1F5BC}\uFE0F Replaced image paths in: ${fileName}`);
-      }
-      const relativePath = path2.relative(dirPath, filePath);
+      const htmlString = processor.processSync(markdown2).toString();
+      const relativePath = path3.relative(dirPath, filePath);
       const file = {
         fileName,
         slug: slugify2(fileName, { decamelize: false }),
@@ -13030,32 +13183,29 @@ async function processFolder(dirPath, opts) {
     }
   }
   log(1, `\u{1F389} Successfully processed ${pages.length} files`);
-  if (opts?.includeMediaData && pages.length > 0 && opts?.mediaData) {
-    pages[0]._mediaData = opts.mediaData;
+  if (opts?.includeMediaData && pages.length > 0 && mediaData.length > 0) {
+    pages[0]._mediaData = mediaData;
     log(1, `\u{1F4CA} Added media catalog to first page object`);
+    if (Object.keys(mediaPathMap).length > 0) {
+      pages[0]._mediaPathMap = mediaPathMap;
+      log(1, `\u{1F5FA}\uFE0F Added media path map to first page object`);
+    }
   }
   return pages;
 }
-function replaceImagePaths(html, mediaPathMap, basePath) {
-  return html.replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/g, (match, src) => {
-    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("/")) {
-      return match;
-    }
-    let normalizedPath = src;
-    if (mediaPathMap[normalizedPath]) {
-      const newSrc = mediaPathMap[normalizedPath];
-      return match.replace(src, newSrc);
-    }
-    const fullPath = path2.relative(basePath, path2.resolve(basePath, normalizedPath));
-    if (mediaPathMap[fullPath]) {
-      const newSrc = mediaPathMap[fullPath];
-      return match.replace(src, newSrc);
-    }
-    return match;
-  });
-}
-function buildMarkdownProcessor({ toLink }) {
-  return unified().use(remarkParse).use(remarkGfm).use(remarkObsidianLink, { toLink }).use(remarkCallouts).use(remarkMath).use(remarkRehype).use(rehypeExternalLinks).use(rehypeSlug).use(rehypeAutolinkHeadings, { behavior: "wrap" }).use(rehypeHighlight, {
+function buildMarkdownProcessor({
+  toLink,
+  mediaData = [],
+  mediaPathMap = {},
+  useAbsolutePaths = false,
+  preferredSize = "md"
+}) {
+  return unified().use(remarkParse).use(remarkGfm).use(remarkObsidianLink, { toLink }).use(remarkObsidianMedia, {
+    mediaData,
+    mediaPathMap,
+    useAbsolutePaths,
+    preferredSize
+  }).use(remarkCallouts).use(remarkMath).use(remarkRehype).use(rehypeExternalLinks).use(rehypeSlug).use(rehypeAutolinkHeadings, { behavior: "wrap" }).use(rehypeHighlight, {
     languages: { ...grammars, elixir }
   }).use(rehypeMathjaxChtml, {
     chtml: {
@@ -13069,7 +13219,7 @@ function buildDefaultAllowedFileSet(dirPath, log) {
     const entries = fs2.readdirSync(currentPath, { withFileTypes: true });
     log(3, `\u{1F4C2} Scanning directory: ${currentPath}`);
     for (const entry of entries) {
-      const entryPath = path2.join(currentPath, entry.name);
+      const entryPath = path3.join(currentPath, entry.name);
       if (entry.isDirectory()) {
         if (entry.name.startsWith(".")) {
           log(3, `\u23ED\uFE0F Skipping hidden directory: ${entry.name}`);
@@ -13105,12 +13255,12 @@ function createLogger(level) {
 
 // src/processMedia.ts
 import fs3 from "node:fs";
-import path3 from "node:path";
+import path4 from "node:path";
 import sharp from "sharp";
 import ora from "ora";
 function createProcessMediaOptions(opts) {
   return {
-    mediaOutputFolder: opts?.mediaOutputFolder || path3.join(process.cwd(), "public/media"),
+    mediaOutputFolder: opts?.mediaOutputFolder || path4.join(process.cwd(), "public/media"),
     mediaPathPrefix: opts?.mediaPathPrefix || "/media",
     optimizeImages: opts?.optimizeImages !== false,
     imageSizes: opts?.imageSizes || DEFAULT_IMAGE_SIZES,
@@ -13134,7 +13284,7 @@ var DEFAULT_IMAGE_FORMATS = [
   { format: "jpeg", options: { quality: 85, mozjpeg: true } }
 ];
 async function processMedia(dirPath, opts) {
-  dirPath = path3.normalize(dirPath);
+  dirPath = path4.normalize(dirPath);
   const options = createProcessMediaOptions(opts);
   const log = createLogger2(options.debug);
   log(1, "\u{1F50D} Scanning media files in: " + dirPath);
@@ -13164,7 +13314,7 @@ async function processMedia(dirPath, opts) {
         if (wasSkipped) skippedCount++;
       });
       mediaData.push(mediaFile);
-      const relativePath = path3.relative(dirPath, filePath).replace(/\\/g, "/");
+      const relativePath = path4.relative(dirPath, filePath).replace(/\\/g, "/");
       const bestPath = findBestOptimizedPath(mediaFile);
       if (bestPath) {
         pathMap[relativePath] = bestPath;
@@ -13212,7 +13362,7 @@ function findMediaFiles(dirPath, log) {
     const entries = fs3.readdirSync(currentPath, { withFileTypes: true });
     log(3, `\u{1F4C2} Scanning directory: ${currentPath}`);
     for (const entry of entries) {
-      const entryPath = path3.join(currentPath, entry.name);
+      const entryPath = path4.join(currentPath, entry.name);
       if (entry.isDirectory()) {
         if (entry.name.startsWith(".") || entry.name === "node_modules") {
           log(3, `\u23ED\uFE0F Skipping directory: ${entry.name}`);
@@ -13220,7 +13370,7 @@ function findMediaFiles(dirPath, log) {
         }
         scanDirectory(entryPath);
       } else if (entry.isFile()) {
-        const ext = path3.extname(entry.name).toLowerCase();
+        const ext = path4.extname(entry.name).toLowerCase();
         if (mediaExtensions.has(ext)) {
           mediaFiles.push(entryPath);
           log(3, `\u{1F4C4} Found media file: ${entry.name}`);
@@ -13246,8 +13396,8 @@ function shouldSkipFile(filePath, outputPath, options) {
   return true;
 }
 async function processMediaFile(filePath, rootDir, options, log, onSkip) {
-  const { base: fileName, ext: fileExt } = path3.parse(filePath);
-  const relativePath = path3.relative(rootDir, filePath);
+  const { base: fileName, ext: fileExt } = path4.parse(filePath);
+  const relativePath = path4.relative(rootDir, filePath);
   const isImage = /\.(jpg|jpeg|png|webp|avif|gif)$/i.test(fileExt);
   const mediaFile = {
     originalPath: relativePath,
@@ -13276,14 +13426,14 @@ async function processMediaFile(filePath, rootDir, options, log, onSkip) {
             log(3, `\u23ED\uFE0F Skipping AVIF conversion for SVG: ${fileName}`);
             continue;
           }
-          const dirStructure = path3.dirname(relativePath);
-          const outputDir = path3.join(options.mediaOutputFolder, dirStructure);
+          const dirStructure = path4.dirname(relativePath);
+          const outputDir = path4.join(options.mediaOutputFolder, dirStructure);
           if (!fs3.existsSync(outputDir)) {
             fs3.mkdirSync(outputDir, { recursive: true });
             log(3, `\u{1F4C1} Created directory: ${outputDir}`);
           }
-          const outputFileName = `${path3.parse(fileName).name}${size.suffix !== "original" ? `-${size.suffix}` : ""}.${format.format}`;
-          const outputPath = path3.join(outputDir, outputFileName);
+          const outputFileName = `${path4.parse(fileName).name}${size.suffix !== "original" ? `-${size.suffix}` : ""}.${format.format}`;
+          const outputPath = path4.join(outputDir, outputFileName);
           const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${outputFileName}`.replace(/\\/g, "/");
           const absolutePublicPath = options.domain ? `${options.domain.replace(/\/+$/, "")}${publicPath}` : void 0;
           if (size.suffix === "original" && format.format !== mediaFile.metadata.format) {
@@ -13348,7 +13498,7 @@ async function processMediaFile(filePath, rootDir, options, log, onSkip) {
       }
     } catch (error) {
       log(0, `\u274C Error optimizing image ${filePath}: ${error}`);
-      const dirStructure = path3.dirname(relativePath);
+      const dirStructure = path4.dirname(relativePath);
       const publicPath = `${options.mediaPathPrefix}/${dirStructure}/${fileName}`.replace(/\\/g, "/");
       const absolutePublicPath = options.domain ? `${options.domain.replace(/\/+$/, "")}${publicPath}` : void 0;
       mediaFile.sizes.original = [{
@@ -13363,13 +13513,13 @@ async function processMediaFile(filePath, rootDir, options, log, onSkip) {
       }];
     }
   } else {
-    const dirStructure = path3.dirname(relativePath);
-    const outputDir = path3.join(options.mediaOutputFolder, dirStructure);
+    const dirStructure = path4.dirname(relativePath);
+    const outputDir = path4.join(options.mediaOutputFolder, dirStructure);
     if (!fs3.existsSync(outputDir)) {
       fs3.mkdirSync(outputDir, { recursive: true });
       log(3, `\u{1F4C1} Created directory: ${outputDir}`);
     }
-    const outputPath = path3.join(outputDir, fileName);
+    const outputPath = path4.join(outputDir, fileName);
     if (shouldSkipFile(filePath, outputPath, options)) {
       log(2, `\u23ED\uFE0F Skipping existing file: ${fileName}`);
       if (onSkip) onSkip(true);
