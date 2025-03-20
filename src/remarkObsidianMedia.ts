@@ -1,3 +1,4 @@
+// remarkObsidianMedia.ts
 import { Plugin } from 'unified';
 import { Root, Image } from 'mdast';
 import { visit } from 'unist-util-visit';
