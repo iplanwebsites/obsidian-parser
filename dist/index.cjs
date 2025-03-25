@@ -13314,7 +13314,10 @@ function createProcessMediaOptions(opts) {
 var DEFAULT_IMAGE_SIZES = [
   { width: 640, height: null, suffix: "sm" },
   { width: 1024, height: null, suffix: "md" },
-  { width: 1920, height: null, suffix: "lg" }
+  { width: 1920, height: null, suffix: "lg" },
+  //xl
+  { width: 3840, height: null, suffix: "xl" }
+  // Original
   // { width: null, height: null, suffix: "ori" } // Original size
 ];
 var DEFAULT_IMAGE_FORMATS = [
