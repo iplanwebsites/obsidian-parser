@@ -13321,7 +13321,7 @@ var DEFAULT_IMAGE_SIZES = [
   // { width: null, height: null, suffix: "ori" } // Original size
 ];
 var DEFAULT_IMAGE_FORMATS = [
-  // { format: "webp", options: { quality: 80 } },
+  { format: "webp", options: { quality: 80 } },
   // { format: "avif", options: { quality: 65 } },
   { format: "jpeg", options: { quality: 85, mozjpeg: true } }
 ];

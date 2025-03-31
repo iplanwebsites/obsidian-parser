@@ -38,7 +38,7 @@ const DEFAULT_IMAGE_SIZES = [
  * Default image formats for optimization
  */
 const DEFAULT_IMAGE_FORMATS = [
-  // { format: "webp", options: { quality: 80 } },
+    { format: "webp", options: { quality: 80 } },
   // { format: "avif", options: { quality: 65 } },
   { format: "jpeg", options: { quality: 85, mozjpeg: true } }
 ];
