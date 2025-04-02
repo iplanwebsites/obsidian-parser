@@ -3,7 +3,7 @@ import { fromHtml } from "hast-util-from-html";
 import { heading } from "hast-util-heading";
 import { toText } from "hast-util-to-text";
 import { visit } from "unist-util-visit";
-import { Metamark } from "../types";
+import { TocItem } from "../types";
 
 function isHeading(node: unknown): boolean {
   return heading(node);
@@ -34,9 +34,9 @@ function getHeaderDepth(headerString: string): number {
   }
 }
 
-export function getToc(htmlString: string): Metamark.TocItem[] {
+export function getToc(htmlString: string): TocItem[] {
   const hast: HastRoot = fromHtml(htmlString);
-  const flatToc: Metamark.TocItem[] = [];
+  const flatToc: TocItem[] = [];
 
   visit(hast, isHeading, (node: unknown) => {
     // this is redundant to `isHeading` but has convenient type narrowing

@@ -1,14 +1,17 @@
 import { expect, test } from "vitest";
 import m from "../src/index.js";
+import { processFolder } from "../src/processFolder";
 
 function setup() {
   return { vaultPath: "./test/testVault/" };
 }
 
-test("vault", () => {
+test("vault", async () => {
   const { vaultPath } = setup();
 
-  const vaultData = m.obsidian.vault.process(vaultPath);
+  // You can use either the legacy API or the new direct import
+  // const vaultData = m.obsidian.vault.process(vaultPath); 
+  const vaultData = await processFolder(vaultPath);
 
   expect(vaultData.length).toBe(3);
   expect(vaultData.find((d) => d.fileName === "other2")).toBeUndefined();

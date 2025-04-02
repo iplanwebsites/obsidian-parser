@@ -33,34 +33,8 @@ import { remarkObsidianMedia } from "./remarkObsidianMedia"; // Import our media
 import m from ".";
 import * as lib from "./lib";
 import { toLinkBuilder } from "./toLinkBuilder"; // Import just the function
-import { Metamark } from "./types";
+import { FileData, ProcessOptions } from "./types";
 import { MediaFileData, MediaPathMap, ProcessMediaOptions } from "./processMedia";
-
-// Extend existing types without redefining namespaces
-declare module "./types" {
-  namespace Metamark {
-    namespace Obsidian {
-      namespace Vault {
-     
-        interface ProcessOptions {
-          // Make sure debug is explicitly declared
-          debug?: number;
-          // File path options
-          filePathAllowSetBuilder?: (dirPath: string) => Set<string>;
-          notePathPrefix?: string;
-          // Media-related properties
-          mediaOptions?: ProcessMediaOptions;
-          mediaData?: MediaFileData[];
-          mediaPathMap?: MediaPathMap;
-          useAbsolutePaths?: boolean;
-          preferredSize?: 'sm' | 'md' | 'lg';
-          // Option to determine if media details should be included in output
-          includeMediaData?: boolean;
-        }
-      }
-    }
-  }
-}
 
 /**
  * Process an Obsidian vault directory and return file data for public files
@@ -70,8 +44,8 @@ declare module "./types" {
  */
 export async function processFolder(
   dirPath: string,
-  opts?: Metamark.Obsidian.Vault.ProcessOptions,
-): Promise<Metamark.Obsidian.Vault.FileData[]> {
+  opts?: ProcessOptions,
+): Promise<FileData[]> {
   // Normalize the input path
   dirPath = path.normalize(dirPath);
   
@@ -124,7 +98,7 @@ export async function processFolder(
   });
 
   // Process pages
-  const pages: Metamark.Obsidian.Vault.FileData[] = [];
+  const pages: FileData[] = [];
 
   for (const filePath of allowedFiles) {
     // Skip non-markdown files
@@ -146,7 +120,7 @@ export async function processFolder(
       const relativePath = path.relative(dirPath, filePath);
 
       // Build file data object
-      const file: Metamark.Obsidian.Vault.FileData = {
+      const file: FileData = {
         fileName,
         slug: slugify(fileName, { decamelize: false }),
         frontmatter,

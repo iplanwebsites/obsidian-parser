@@ -14,7 +14,6 @@ export {
   type ProcessMediaOptions 
 };
  
-
 // LEGACY export structure (metamark):
 const MAIN = {
   ...lib.utility,

@@ -1,8 +1,8 @@
 import { Link, WikiLink } from "remark-obsidian-link";
 import * as lib from "./lib";
-import { Metamark } from "./types";
+import { ToLinkBuilder } from "./types";
 
-export const toLinkBuilder: Metamark.Obsidian.Vault.ToLinkBuilder =
+export const toLinkBuilder: ToLinkBuilder =
   ({ filePathAllowSet, toSlug, prefix }) =>
   (wikiLink) => {
     const uriOpts = { toSlug, prefix };
